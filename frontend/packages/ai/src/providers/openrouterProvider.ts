@@ -1,35 +1,39 @@
 /**
- * OpenAI provider — real implementation, opt-in via OPENAI_API_KEY. Throws a
- * clear "not configured" error unless the key is set, so the app never
- * silently pretends to call a real model.
+ * OpenRouter provider — real implementation. OpenRouter exposes an
+ * OpenAI-Chat-Completions-compatible endpoint that can route to many
+ * underlying models, so it's the cheapest way to get a real (non-mock) AI
+ * path working with a single key. Model is configurable via OPENROUTER_MODEL.
  */
 import type { AgentInput, AgentOutput, AgentProvider } from "./base.js";
 import { ProviderNotConfiguredError } from "./base.js";
 import { buildSystemPrompt, buildUserPrompt, parseJsonResponse } from "./promptUtil.js";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "openai/gpt-4o-mini";
 
-interface OpenAIResponse {
+interface OpenRouterChoice {
+  message?: { content?: string };
+}
+interface OpenRouterResponse {
   model?: string;
-  choices?: Array<{ message?: { content?: string } }>;
+  choices?: OpenRouterChoice[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string };
 }
 
-export class OpenAIProvider implements AgentProvider {
-  readonly name = "openai";
+export class OpenRouterProvider implements AgentProvider {
+  readonly name = "openrouter";
 
   async run(input: AgentInput): Promise<AgentOutput> {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
       throw new ProviderNotConfiguredError(
-        "OpenAI provider selected (AGENT_PROVIDER=openai) but OPENAI_API_KEY is not set. " +
-          "Set OPENAI_API_KEY or switch AGENT_PROVIDER back to 'mock'.",
+        "OpenRouter provider selected (AGENT_PROVIDER=openrouter) but OPENROUTER_API_KEY is not set. " +
+          "Set OPENROUTER_API_KEY or switch AGENT_PROVIDER back to 'mock'.",
       );
     }
-    const model = process.env.OPENAI_MODEL ?? DEFAULT_MODEL;
+    const model = process.env.OPENROUTER_MODEL ?? DEFAULT_MODEL;
 
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -45,13 +49,14 @@ export class OpenAIProvider implements AgentProvider {
       }),
     });
 
-    const data = (await res.json()) as OpenAIResponse;
+    const data = (await res.json()) as OpenRouterResponse;
     if (!res.ok) {
-      throw new Error(`OpenAI request failed (${res.status}): ${data.error?.message ?? res.statusText}`);
+      throw new Error(`OpenRouter request failed (${res.status}): ${data.error?.message ?? res.statusText}`);
     }
+
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
-      throw new Error("OpenAI response had no message content.");
+      throw new Error("OpenRouter response had no message content.");
     }
 
     return {

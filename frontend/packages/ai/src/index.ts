@@ -12,6 +12,7 @@ import type { AgentInput, AgentOutput, AgentProvider } from "./providers/base.js
 import { MockProvider } from "./providers/mockProvider.js";
 import { OpenAIProvider } from "./providers/openaiProvider.js";
 import { AnthropicProvider } from "./providers/anthropicProvider.js";
+import { OpenRouterProvider } from "./providers/openrouterProvider.js";
 import { validateAgentOutput } from "./outputValidation.js";
 
 export const PACKAGE_NAME = "@optimora/ai" as const;
@@ -24,6 +25,7 @@ export type { AgentInput, AgentOutput, AgentProvider } from "./providers/base.js
 export { MockProvider } from "./providers/mockProvider.js";
 export { OpenAIProvider } from "./providers/openaiProvider.js";
 export { AnthropicProvider } from "./providers/anthropicProvider.js";
+export { OpenRouterProvider } from "./providers/openrouterProvider.js";
 export { validateAgentOutput, AgentOutputValidationError } from "./outputValidation.js";
 
 export interface AgentRunResult {
@@ -40,14 +42,19 @@ export interface AgentRunResult {
 }
 
 /**
- * Resolves which provider implementation to use. Defaults to `mock`.
- * Set AGENT_PROVIDER=openai|anthropic to opt into a real provider (requires
- * the matching API key env var — OPENAI_API_KEY / ANTHROPIC_API_KEY).
+ * Resolves which provider implementation to use. An explicit AGENT_PROVIDER
+ * (or the providerKey argument) always wins. If unset, defaults to
+ * `openrouter` when OPENROUTER_API_KEY is present (cheapest way to get a real,
+ * non-mock path working with one key), else falls back to `mock`.
+ * Set AGENT_PROVIDER=openai|anthropic|openrouter to opt into a real provider
+ * (requires the matching API key env var).
  */
 export function resolveProvider(providerKey?: string): AgentProvider {
-  const key = (providerKey ?? process.env.AGENT_PROVIDER ?? "mock").toLowerCase();
+  const explicit = providerKey ?? process.env.AGENT_PROVIDER;
+  const key = (explicit ?? (process.env.OPENROUTER_API_KEY ? "openrouter" : "mock")).toLowerCase();
   if (key === "openai") return new OpenAIProvider();
   if (key === "anthropic") return new AnthropicProvider();
+  if (key === "openrouter") return new OpenRouterProvider();
   return new MockProvider();
 }
 
