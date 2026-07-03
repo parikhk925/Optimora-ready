@@ -239,8 +239,19 @@ async function executeSingleStep(deps: ExecuteStepDeps): Promise<StepExecutionOu
       if (payload.fromLatestAiOutput) resolvedPayload.aiOutput = context.latestAiOutput;
       if (payload.bodyFromContextPath) resolvedPayload.body = resolvePath(context, String(payload.bodyFromContextPath));
 
+      const connection = await tx.workspaceIntegration.findFirst({
+        where: { orgId: ctx.orgId, definition: { key: integrationKey } },
+        select: { credentialRef: true, configSnapshot: true },
+      });
       const result = await executeIntegrationAction(
-        { tx, tenantId: ctx.tenantId, orgId: ctx.orgId, workspaceId },
+        {
+          tx,
+          tenantId: ctx.tenantId,
+          orgId: ctx.orgId,
+          workspaceId,
+          credentialRef: connection?.credentialRef ?? null,
+          configSnapshot: (connection?.configSnapshot as Record<string, unknown> | undefined) ?? {},
+        },
         integrationKey,
         actionName,
         resolvedPayload,

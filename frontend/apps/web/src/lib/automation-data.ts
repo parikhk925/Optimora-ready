@@ -1737,7 +1737,48 @@ export async function checkUsageLimit(ctx: OrgContext, eventType: "workflow_run"
   return { allowed: true };
 }
 
-const CONNECTABLE_PROVIDERS = ["webhook", "google-sheets", "email", "crm"] as const;
+const CONNECTABLE_PROVIDERS = ["webhook", "google-sheets", "email", "crm", "gmail"] as const;
+
+/**
+ * Persists a completed Gmail OAuth connection (real tokens) after the OAuth
+ * callback exchanges the authorization code. Tokens are stored in
+ * WorkspaceIntegration.configSnapshot — the same tenant/org-scoped column
+ * every other integration already uses for its config. Known limitation:
+ * stored as-is (not separately encrypted at rest); acceptable for this pass
+ * since the column lives behind the same RLS as the rest of workspace data,
+ * but a dedicated secrets vault would be a stronger long-term home for it.
+ */
+export async function connectGmailIntegration(
+  ctx: OrgContext,
+  tokens: { accessToken: string; refreshToken?: string; expiresAt: string },
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const result = await withAutomationDb(ctx, async (tx) => {
+    const workspaceId = await ensureWorkspace(tx, ctx);
+    const definition = await tx.integrationDefinition.upsert({
+      where: { key: "gmail" },
+      update: {},
+      create: { key: "gmail", name: "Gmail", category: "communication", description: "Gmail integration", status: "beta" },
+    });
+    const connection = await tx.workspaceIntegration.upsert({
+      where: { orgId_definitionId: { orgId: ctx.orgId, definitionId: definition.id } },
+      update: {
+        status: "connected", authType: "oauth", workspaceId,
+        configSnapshot: toPrismaJson(tokens), connectedAt: new Date(), connectedBy: toUuidOrNull(ctx.actorId),
+      },
+      create: {
+        tenantId: ctx.tenantId, orgId: ctx.orgId, workspaceId, definitionId: definition.id,
+        status: "connected", authType: "oauth", configSnapshot: toPrismaJson(tokens),
+        connectedAt: new Date(), connectedBy: toUuidOrNull(ctx.actorId),
+      },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: ctx.tenantId, orgId: ctx.orgId, service: "automation-os", eventType: "integration.connected", sourceRef: connection.id, occurredAt: new Date(), payload: { provider: "gmail", actorId: ctx.actorId ?? null } },
+    }).catch(() => undefined);
+    return connection.status;
+  });
+  if (!result) return { ok: false, error: "Database not configured" };
+  return { ok: true, status: result };
+}
 
 /** POST /api/automation/integrations/:provider/connect — always mock/architectural in this pass (no real OAuth wired). */
 export async function connectIntegration(ctx: OrgContext, provider: string, config: Record<string, unknown> = {}): Promise<{ ok: boolean; status?: string; error?: string }> {

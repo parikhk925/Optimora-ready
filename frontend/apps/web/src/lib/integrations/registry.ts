@@ -3,12 +3,14 @@ import { webhookIntegration } from "./webhook";
 import { googleSheetsIntegration } from "./googleSheets";
 import { emailIntegration } from "./email";
 import { mockCrmIntegration } from "./mockCrm";
+import { gmailIntegration } from "./gmail";
 
 const REGISTRY: Record<string, IntegrationProvider> = {
   webhook: webhookIntegration,
   "google-sheets": googleSheetsIntegration,
   email: emailIntegration,
   crm: mockCrmIntegration,
+  gmail: gmailIntegration,
 };
 
 export function getIntegrationProvider(key: string): IntegrationProvider | undefined {
