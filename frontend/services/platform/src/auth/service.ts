@@ -60,7 +60,7 @@ export async function requestMagicLink(
     data: { tenantId, identifier: email, tokenHash: hash, expiresAt },
   });
 
-  const url = `${deps.baseUrl}/v1/auth/magic-link/verify?token=${encodeURIComponent(token)}`;
+  const url = `${deps.baseUrl}/login?token=${encodeURIComponent(token)}`;
   await deps.sender.sendMagicLink({ to: email, url, token, tenantId });
 }
 

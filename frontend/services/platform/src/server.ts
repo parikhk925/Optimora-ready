@@ -101,6 +101,13 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   app.register(cookie);
 
   function authDeps(req: FastifyRequest): AuthDeps {
+    // Magic-link URLs must point at the WEB APP (which owns /login and adds the
+    // tenant header via its own proxy route), never at this API's own host —
+    // a browser clicking the link sends no custom headers, so if the link
+    // pointed here directly, tenant resolution would always fail closed.
+    if (process.env.WEB_APP_URL) {
+      return { secret: authSecret, sender: emailSender, baseUrl: process.env.WEB_APP_URL };
+    }
     const host = singleHeader(req.headers.host) ?? "localhost";
     const proto = singleHeader(req.headers["x-forwarded-proto"]) ?? "http";
     return { secret: authSecret, sender: emailSender, baseUrl: `${proto}://${host}` };
