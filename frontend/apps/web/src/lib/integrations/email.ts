@@ -1,13 +1,33 @@
 /**
- * Email integration — MOCK by default (no real SMTP/Resend key wired in this
- * pass, per explicit user choice). Every "send" is logged and stored, never
- * actually delivered, and always labeled "mock". Supports generating the email
- * body from a prior AI step's structured output.
+ * Email integration — sends via the Resend API when RESEND_API_KEY is set,
+ * otherwise runs in "mock" mode (nothing is delivered, and the result is
+ * always labeled mock so callers can't mistake it for a real send). Supports
+ * generating the email body from a prior AI step's structured output.
  */
 import type { IntegrationActionContext, IntegrationActionResult, IntegrationProvider } from "./base";
 
 function isRealModeEnabled(): boolean {
-  return Boolean(process.env.RESEND_API_KEY || process.env.SMTP_HOST);
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
+async function sendViaResend(to: string, subject: string, body: string): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error("RESEND_API_KEY not configured");
+  const from = process.env.EMAIL_FROM ?? "Optimora <onboarding@resend.dev>";
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ from, to, subject, html: `<p>${body}</p>` }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Resend send failed (${res.status}): ${text}`);
+  }
 }
 
 function bodyFromAiOutput(aiOutput: Record<string, unknown> | undefined): string | undefined {
@@ -38,19 +58,27 @@ export const emailIntegration: IntegrationProvider = {
       };
     }
 
-    // Real provider mode is architecturally supported but not implemented in
-    // this pass per explicit scope (mock-only email chosen for this build).
-    return {
-      status: "requires_setup",
-      output: { to, subject, body },
-      label: "Email (real provider configured but send call not implemented — requires_setup)",
-    };
+    try {
+      await sendViaResend(to, subject, body);
+      return {
+        status: "real",
+        output: { to, subject, body, sent: true },
+        label: "Email (sent via Resend)",
+      };
+    } catch (err) {
+      return {
+        status: "failed",
+        output: { to, subject, body, sent: false },
+        error: err instanceof Error ? err.message : String(err),
+        label: "Email (Resend send failed)",
+      };
+    }
   },
 
   async testConnection(): Promise<IntegrationActionResult> {
     if (!isRealModeEnabled()) {
       return { status: "mock", output: { connected: false }, label: "Email (mock mode — no provider configured)" };
     }
-    return { status: "requires_setup", output: { connected: false }, label: "Email (requires_setup)" };
+    return { status: "real", output: { connected: true }, label: "Email (Resend configured)" };
   },
 };

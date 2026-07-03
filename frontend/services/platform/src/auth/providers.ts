@@ -45,3 +45,36 @@ export class StubEmailSender implements EmailSender {
     return undefined;
   }
 }
+
+/**
+ * Real email sender via the Resend API (https://resend.com). Activated only
+ * when RESEND_API_KEY is set (see server.ts). Throws loudly on failure —
+ * never silently "succeeds" without actually sending.
+ */
+export class ResendEmailSender implements EmailSender {
+  constructor(
+    private readonly apiKey: string,
+    private readonly from: string = process.env.EMAIL_FROM ?? "Optimora <onboarding@resend.dev>",
+  ) {}
+
+  async sendMagicLink(message: MagicLinkMessage): Promise<void> {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: this.from,
+        to: message.to,
+        subject: "Your Optimora sign-in link",
+        html: `<p>Click below to sign in to Optimora:</p><p><a href="${message.url}">${message.url}</a></p><p>This link expires shortly. If you didn't request it, ignore this email.</p>`,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`ResendEmailSender: failed to send magic link (${res.status}): ${body}`);
+    }
+  }
+}

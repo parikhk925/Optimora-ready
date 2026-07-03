@@ -36,20 +36,31 @@ export function IntegrationActions({ integrationKey, status }: { integrationKey:
   }
 
   const connected = status === "connected";
+  const usesRealOauth = integrationKey === "gmail";
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         {!connected ? (
-          <button
-            type="button"
-            data-testid={`integration-connect-${integrationKey}`}
-            onClick={() => call("connect")}
-            disabled={loading !== null}
-            className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
-          >
-            {loading === "connect" ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
-          </button>
+          usesRealOauth ? (
+            <a
+              href={`/api/integrations/${integrationKey}/connect`}
+              data-testid={`integration-connect-${integrationKey}`}
+              className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
+            >
+              Connect
+            </a>
+          ) : (
+            <button
+              type="button"
+              data-testid={`integration-connect-${integrationKey}`}
+              onClick={() => call("connect")}
+              disabled={loading !== null}
+              className="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors"
+            >
+              {loading === "connect" ? <Loader2 className="h-3 w-3 animate-spin" /> : "Connect"}
+            </button>
+          )
         ) : (
           <button
             type="button"

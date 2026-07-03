@@ -21,7 +21,7 @@ import {
   requestDomain,
   verifyDomain,
 } from "./domain/service.js";
-import { StubEmailSender, type EmailSender } from "./auth/providers.js";
+import { StubEmailSender, ResendEmailSender, type EmailSender } from "./auth/providers.js";
 import {
   AuthError,
   logout,
@@ -82,7 +82,19 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   const domainProvider = options.domainProvider ?? new StubDomainProvider();
   const authSecret =
     options.authSecret ?? process.env.AUTH_SECRET ?? "dev-insecure-secret-change-me-please-32+";
-  const emailSender = options.emailSender ?? new StubEmailSender();
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const emailSender =
+    options.emailSender ??
+    (resendApiKey
+      ? new ResendEmailSender(resendApiKey)
+      : (() => {
+          if (process.env.NODE_ENV !== "test") {
+            console.warn(
+              "[platform] RESEND_API_KEY not set — magic-link emails will not be delivered (using StubEmailSender).",
+            );
+          }
+          return new StubEmailSender();
+        })());
   const secureCookies = options.secureCookies ?? process.env.NODE_ENV === "production";
   const auditSink = options.auditSink ?? new LogAuditSink();
 
