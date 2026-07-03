@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #7C3AED;
+  --op-purple: #7C3AED;
+  --op-orange: #FF7A3D;
+  --op-border: #EAEAF2;
+  --op-bg: #FBFAFF;
+}
+
+html {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+body {
+  @apply bg-[#FBFAFF] text-[#0F1020] antialiased;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply rounded-full bg-gray-200; }
+::-webkit-scrollbar-thumb:hover { @apply bg-gray-300; }
+
+/* ── Shared utilities ──────────────────────────────────────────── */
+@layer utilities {
+  /* Glass card */
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-sm border border-white/60 shadow-sm;
+  }
+
+  /* Gradient text — purple/orange */
+  .gradient-text {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #7C3AED 0%, #A855F7 50%, #FF7A3D 100%);
+  }
+  .gradient-text-purple {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%);
+  }
+  .gradient-text-orange {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #FF7A3D 0%, #FB923C 100%);
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200;
+    background: linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%);
+    box-shadow: 0 2px 8px rgba(124,58,237,0.30);
+  }
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(124,58,237,0.40);
+  }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-orange {
+    @apply inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200;
+    background: linear-gradient(135deg, #FF7A3D 0%, #FB923C 100%);
+    box-shadow: 0 2px 8px rgba(255,122,61,0.25);
+  }
+  .btn-orange:hover { transform: translateY(-1px); }
+
+  .btn-outline {
+    @apply inline-flex items-center gap-2 rounded-xl border border-[#EAEAF2] bg-white px-5 py-2.5 text-sm font-semibold text-[#0F1020] shadow-sm hover:bg-gray-50 transition-all duration-200;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-[#6B7280] hover:bg-gray-100 hover:text-[#0F1020] transition-colors;
+  }
+
+  /* Section label pill */
+  .section-label {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-purple-200 bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700;
+  }
+  .section-label-orange {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700;
+  }
+
+  /* Card base */
+  .op-card {
+    @apply rounded-2xl border border-[#EAEAF2] bg-white;
+    box-shadow: 0 1px 3px 0 rgba(0,0,0,0.05), 0 1px 2px -1px rgba(0,0,0,0.04);
+  }
+  .op-card-sm {
+    @apply rounded-xl border border-[#EAEAF2] bg-white;
+    box-shadow: 0 1px 2px 0 rgba(0,0,0,0.04);
+  }
+
+  /* Status pills */
+  .status-running  { @apply rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-600; }
+  .status-success  { @apply rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600; }
+  .status-failed   { @apply rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-600; }
+  .status-pending  { @apply rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600; }
+  .status-active   { @apply rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700; }
+  .status-inactive { @apply rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-semibold text-gray-500; }
+
+  /* Sidebar nav item */
+  .nav-item {
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-[#6B7280] hover:bg-purple-50 hover:text-[#7C3AED] transition-colors cursor-pointer;
+  }
+  .nav-item-active {
+    @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-semibold text-[#7C3AED] bg-purple-50 cursor-pointer;
+  }
+
+  /* Input */
+  .op-input {
+    @apply w-full rounded-xl border border-[#EAEAF2] bg-white px-4 py-2.5 text-sm text-[#0F1020] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-300 transition-all;
+  }
+}

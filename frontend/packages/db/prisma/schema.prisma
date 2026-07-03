@@ -1,0 +1,2250 @@
+// Optimora — Prisma schema v1 (T-1.4)
+// Foundational identity & tenancy entities (EMS.2.1 / EMS.2.2).
+// Row-Level Security policies are added in the `*_rls_policies` SQL migration,
+// not expressed here (Prisma does not model RLS).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Runtime/app connection: the non-superuser app role, which IS subject to RLS.
+  url       = env("DATABASE_URL")
+  // Migrations/introspection connection: the owner/superuser (can DDL + create
+  // the app role + shadow DB). Superusers bypass RLS, which is why the app must
+  // NOT use this URL at runtime.
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+/// The white-label reseller/agency — top of the tenancy tree.
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organizations Organization[]
+  customDomains CustomDomain[]
+
+  @@map("tenants")
+}
+
+/// A business/client under a tenant.
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  slug      String
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  memberships Membership[]
+  apiKeys     ApiKey[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("organizations")
+}
+
+/// Global user identity (not org-scoped); linked to orgs via memberships.
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  name      String?
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships          Membership[]
+  authSessions         AuthSession[]
+  workspaceMemberships WorkspaceMember[]
+
+  @@map("users")
+}
+
+/// Single-use magic-link token (hashed). Tenant-scoped (RLS).
+model VerificationToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  identifier String
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([identifier])
+  @@map("verification_tokens")
+}
+
+/// Refresh-token session (hashed), supporting rotation + revocation. Tenant-scoped (RLS).
+model AuthSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  refreshHash String    @unique @map("refresh_hash")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  rotatedTo   String?   @map("rotated_to") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@map("auth_sessions")
+}
+
+/// User <-> Organization link. The `role` string is a placeholder until the
+/// RBAC roles table arrives in Epic E2 (T-2.6); it is intentionally not yet a FK.
+model Membership {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  role           String   @default("member")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberRoles  MembershipRole[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+/// Auditable decision record (T-8.3). type: route_department|route_agent|
+/// escalate|resolve_conflict. outcome: route|escalate|allow|deny. Tenant-scoped (RLS).
+model Decision {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  type          String
+  outcome       String
+  subjectId     String?  @map("subject_id") @db.Uuid
+  targetNodeId  String?  @map("target_node_id") @db.Uuid
+  targetAgentId String?  @map("target_agent_id") @db.Uuid
+  basis         String   @default("deterministic")
+  rationale     Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("decisions")
+}
+
+/// Decision outbox event (T-8.3). Tenant-scoped (RLS).
+model DecisionEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  decisionId String   @map("decision_id") @db.Uuid
+  type       String
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([decisionId])
+  @@map("decision_events")
+}
+
+/// Auditable critique from the Reflection Engine (T-8.4). reviewerType:
+/// deterministic|llm_judge. result: pass|fail. recommendation: accept|revise|
+/// escalate|fail. Tenant/org-scoped (RLS).
+model Critique {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  orgId                 String   @map("org_id") @db.Uuid
+  taskId                String   @map("task_id") @db.Uuid
+  agentId               String?  @map("agent_id") @db.Uuid
+  agentVersion          Int?     @map("agent_version")
+  agentHash             String?  @map("agent_hash")
+  qualityScore          Float    @map("quality_score")
+  result                String
+  passed                Boolean
+  violatedRules         Json     @default("[]") @map("violated_rules")
+  missingRequirements   Json     @default("[]") @map("missing_requirements")
+  suggestedFixes        Json     @default("[]") @map("suggested_fixes")
+  confidence            Float    @default(1)
+  evidence              Json     @default("[]")
+  reviewerType          String   @map("reviewer_type")
+  recommendation        String
+  retryRecommended      Boolean  @default(false) @map("retry_recommended")
+  escalationRecommended Boolean  @default(false) @map("escalation_recommended")
+  attempt               Int      @default(0)
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([taskId])
+  @@map("critiques")
+}
+
+/// Reflection outbox event (T-8.4). Tenant-scoped (RLS).
+model ReflectionEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  critiqueId String   @map("critique_id") @db.Uuid
+  type       String
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([critiqueId])
+  @@map("reflection_events")
+}
+
+/// A single agent execution on the Agent Runtime (T-9.1). Immutable record of
+/// one run of an agent (ABI) against a task. status: pending|running|succeeded|
+/// failed. Model/tool calls go through provider stubs (no paid calls yet); token
+/// counts are deterministic estimates and cost is 0 until a real provider is
+/// wired. Tenant/org-scoped (RLS).
+model AgentRun {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  orgId              String    @map("org_id") @db.Uuid
+  workspaceId        String?   @map("workspace_id") @db.Uuid
+  taskId             String    @map("task_id") @db.Uuid
+  agentId            String    @map("agent_id") @db.Uuid
+  workflowRunId      String?   @map("workflow_run_id") @db.Uuid
+  workflowRunStepId  String?   @map("workflow_run_step_id") @db.Uuid
+  agentDefinitionKey String?   @map("agent_definition_key")
+  agentVersion       Int       @map("agent_version")
+  agentHash          String?   @map("agent_hash")
+  status             String    @default("pending")
+  modelProvider      String    @map("model_provider")
+  input              Json      @default("{}")
+  output             Json?
+  toolCalls          Json      @default("[]") @map("tool_calls")
+  tokensIn           Int       @default(0) @map("tokens_in")
+  tokensOut          Int       @default(0) @map("tokens_out")
+  cost               Float     @default(0)
+  failureReason      String?   @map("failure_reason")
+  startedAt          DateTime? @map("started_at")
+  finishedAt         DateTime? @map("finished_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  workspace       Workspace?       @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  workflowRun     WorkflowRun?     @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  workflowRunStep WorkflowRunStep? @relation(fields: [workflowRunStepId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([taskId])
+  @@index([agentId])
+  @@index([workflowRunId])
+  @@index([workflowRunStepId])
+  @@map("agent_runs")
+}
+
+/// Agent Runtime outbox event (T-9.1). Tenant-scoped (RLS).
+model RuntimeEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  runId     String   @map("run_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([runId])
+  @@map("runtime_events")
+}
+
+/// Jurisdiction config (E9 Jurisdiction). Versioned, tenant-scoped (RLS).
+/// No live tax law. All rules config-driven. Finance/CA agent must never default to one country.
+model JurisdictionConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  countryCode    String   @map("country_code")
+  region         String?
+  businessDomain String   @map("business_domain")
+  version        Int
+  profile        Json
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([countryCode])
+  @@index([businessDomain])
+  @@index([active])
+  @@map("jurisdiction_configs")
+}
+
+/// Agent → jurisdiction binding (E9 Jurisdiction). Append-only, tenant-scoped (RLS).
+model AgentJurisdictionBinding {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  orgId                String   @map("org_id") @db.Uuid
+  agentId              String   @map("agent_id") @db.Uuid
+  jurisdictionConfigId String   @map("jurisdiction_config_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([agentId])
+  @@index([jurisdictionConfigId])
+  @@map("agent_jurisdiction_bindings")
+}
+
+/// Task → jurisdiction reference (E9 Jurisdiction). Append-only, tenant-scoped (RLS).
+model TaskJurisdictionRef {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  orgId                String   @map("org_id") @db.Uuid
+  taskId               String   @map("task_id") @db.Uuid
+  jurisdictionConfigId String   @map("jurisdiction_config_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([taskId])
+  @@map("task_jurisdiction_refs")
+}
+
+/// Jurisdiction audit event (E9 Jurisdiction). Tenant-scoped (RLS).
+model JurisdictionEvent {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  jurisdictionConfigId String   @map("jurisdiction_config_id")
+  type                 String
+  payload              Json     @default("{}")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([jurisdictionConfigId])
+  @@map("jurisdiction_events")
+}
+
+/// Unified audit log (E9 Observability). Append-only, tenant-scoped (RLS).
+/// Normalized event shape across all services. No external vendor fields.
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  service       String
+  eventType     String   @map("event_type")
+  severity      String   @default("info")
+  agentId       String?  @map("agent_id") @db.Uuid
+  taskId        String?  @map("task_id") @db.Uuid
+  runId         String?  @map("run_id") @db.Uuid
+  sourceRef     String?  @map("source_ref")
+  correlationId String?  @map("correlation_id")
+  traceId       String?  @map("trace_id")
+  payload       Json     @default("{}")
+  occurredAt    DateTime @map("occurred_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([service])
+  @@index([eventType])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([runId])
+  @@index([correlationId])
+  @@index([occurredAt])
+  @@map("audit_logs")
+}
+
+/// Usage record (E9 Metering). Append-only. Tenant/org-scoped (RLS). No billing fields.
+model UsageRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  agentId          String?  @map("agent_id") @db.Uuid
+  taskId           String?  @map("task_id") @db.Uuid
+  actorId          String   @map("actor_id")
+  service          String
+  operation        String
+  units            Float
+  estimatedCostUsd Float    @map("estimated_cost_usd")
+  currency         String   @default("USD")
+  sourceRef        String?  @map("source_ref")
+  occurredAt       DateTime @map("occurred_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([occurredAt])
+  @@map("usage_records")
+}
+
+/// Metering outbox event (E9 Metering). Tenant-scoped (RLS).
+model MeteringEvent {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  usageRecordId String   @map("usage_record_id") @db.Uuid
+  type          String
+  payload       Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([usageRecordId])
+  @@map("metering_events")
+}
+
+/// Approval request (E9 Approval). State-machine: pending → approved/rejected/expired/cancelled.
+/// Tenant/org-scoped (RLS). actionPayload stored for audit; risky action NOT auto-executed.
+model ApprovalRequest {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  orgId         String    @map("org_id") @db.Uuid
+  requesterId   String    @map("requester_id")
+  reason        String
+  description   String
+  actionPayload Json      @default("{}") @map("action_payload")
+  agentId       String?   @map("agent_id") @db.Uuid
+  taskId        String?   @map("task_id") @db.Uuid
+  runId         String?   @map("run_id") @db.Uuid
+  state         String    @default("pending")
+  approverId    String?   @map("approver_id")
+  approverNote  String?   @map("approver_note")
+  expiresAt     DateTime  @map("expires_at")
+  resolvedAt    DateTime? @map("resolved_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([state])
+  @@index([agentId])
+  @@index([taskId])
+  @@map("approval_requests")
+}
+
+/// Approval outbox event (E9 Approval). Tenant-scoped (RLS).
+model ApprovalEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  approvalId String   @map("approval_id") @db.Uuid
+  type       String
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([approvalId])
+  @@map("approval_events")
+}
+
+/// Connector connection record (E9 Integrations). Stores secretRef only — never raw secret.
+/// Tenant/org-scoped (RLS).
+model ConnectorConnection {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  connectorKey String   @map("connector_key")
+  status       String   @default("connected")
+  secretRef    String?  @map("secret_ref")
+  meta         Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([connectorKey])
+  @@map("connector_connections")
+}
+
+/// Connector invocation audit record (E9 Integrations). No raw args/output stored.
+/// Tenant/org-scoped (RLS).
+model ConnectorInvocation {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  connectionId   String   @map("connection_id") @db.Uuid
+  capabilityName String   @map("capability_name")
+  status         String   @default("succeeded")
+  failureReason  String?  @map("failure_reason")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([connectionId])
+  @@map("connector_invocations")
+}
+
+/// Connector execution outbox event (E9 Integrations). Tenant-scoped (RLS).
+model ConnectorEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  invocationId String   @map("invocation_id") @db.Uuid
+  type         String
+  payload      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([invocationId])
+  @@map("connector_events")
+}
+
+/// Tool invocation record (E9 Tools). Write-once; no raw args/output stored (no secrets).
+/// Tenant/org/agent-scoped (RLS).
+model ToolInvocation {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  agentId       String   @map("agent_id") @db.Uuid
+  taskId        String?  @map("task_id") @db.Uuid
+  toolName      String   @map("tool_name")
+  status        String   @default("succeeded")
+  failureReason String?  @map("failure_reason")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([toolName])
+  @@map("tool_invocations")
+}
+
+/// Tool execution outbox event (E9 Tools). Tenant-scoped (RLS).
+model ToolEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  invocationId String   @map("invocation_id") @db.Uuid
+  type         String
+  payload      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([invocationId])
+  @@map("tool_events")
+}
+
+/// Model invocation record (E9 Model Routing). Write-once; no secrets/prompt stored.
+/// Tenant/org/agent-scoped (RLS).
+model ModelInvocation {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  agentId          String   @map("agent_id") @db.Uuid
+  taskId           String?  @map("task_id") @db.Uuid
+  providerName     String   @map("provider_name")
+  qualityTier      String   @map("quality_tier")
+  costCeilingUsd   Float?   @map("cost_ceiling_usd")
+  estimatedCostUsd Float    @default(0) @map("estimated_cost_usd")
+  tokensIn         Int      @default(0) @map("tokens_in")
+  tokensOut        Int      @default(0) @map("tokens_out")
+  status           String   @default("succeeded")
+  failureReason    String?  @map("failure_reason")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([agentId])
+  @@index([taskId])
+  @@map("model_invocations")
+}
+
+/// Model routing outbox event (E9 Model Routing). Tenant-scoped (RLS).
+model ModelRoutingEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  invocationId String   @map("invocation_id") @db.Uuid
+  type         String
+  payload      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([invocationId])
+  @@map("model_routing_events")
+}
+
+/// Agent memory record (E9 Memory). Mutable status only; content is write-once.
+/// Tenant/agent/org-scoped (RLS).
+model MemoryRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  agentId    String   @map("agent_id") @db.Uuid
+  taskId     String?  @map("task_id") @db.Uuid
+  type       String
+  content    String
+  tags       String[] @default([])
+  importance Float    @default(0.5)
+  meta       Json     @default("{}")
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([agentId])
+  @@index([taskId])
+  @@index([type])
+  @@index([status])
+  @@map("memory_records")
+}
+
+/// Memory Store outbox event (E9 Memory). Tenant-scoped (RLS).
+model MemoryEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  memoryId  String   @map("memory_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([memoryId])
+  @@map("memory_events")
+}
+
+/// Assembled context for a task+agent (Context Fabric, T-9.x). Write-once;
+/// deterministic, budget-bounded. Tenant/org-scoped (RLS).
+model ContextAssembly {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  orgId           String   @map("org_id") @db.Uuid
+  taskId          String   @map("task_id") @db.Uuid
+  agentId         String   @map("agent_id") @db.Uuid
+  agentVersion    Int      @map("agent_version")
+  status          String   @default("assembled")
+  retriever       String
+  budgetMaxTokens Int      @map("budget_max_tokens")
+  usedTokens      Int      @default(0) @map("used_tokens")
+  truncated       Boolean  @default(false)
+  sections        Json     @default("[]")
+  failureReason   String?  @map("failure_reason")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([taskId])
+  @@index([agentId])
+  @@map("context_assemblies")
+}
+
+/// Context Fabric outbox event (T-9.x). Tenant-scoped (RLS).
+model ContextEvent {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  assemblyId String   @map("assembly_id") @db.Uuid
+  type       String
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([assemblyId])
+  @@map("context_events")
+}
+
+/// Immutable inter-agent message on the Agent Communication Bus (T-10.1).
+/// Content (sender/recipient/type/thread/payload/refs) is write-once; only
+/// delivery status + timestamps mutate. type: task_update|question|answer|
+/// escalation|critique|learning_signal|decision_notice|system_notice.
+/// senderKind: node|system. status: pending|delivered|read|failed.
+/// Tenant/org-scoped (RLS). Broadcasts fan out into one row per recipient,
+/// linked by `broadcast_group_id`.
+model Message {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  orgId            String    @map("org_id") @db.Uuid
+  threadId         String    @map("thread_id") @db.Uuid
+  type             String
+  senderKind       String    @map("sender_kind")
+  senderNodeId     String?   @map("sender_node_id") @db.Uuid
+  recipientNodeId  String    @map("recipient_node_id") @db.Uuid
+  broadcastGroupId String?   @map("broadcast_group_id") @db.Uuid
+  relationship     String
+  status           String    @default("pending")
+  payload          Json      @default("{}")
+  // Traceability to the records this message is about (all optional).
+  taskId           String?   @map("task_id") @db.Uuid
+  planId           String?   @map("plan_id") @db.Uuid
+  decisionId       String?   @map("decision_id") @db.Uuid
+  critiqueId       String?   @map("critique_id") @db.Uuid
+  learningRecordId String?   @map("learning_record_id") @db.Uuid
+  failureReason    String?   @map("failure_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deliveredAt      DateTime? @map("delivered_at")
+  readAt           DateTime? @map("read_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([recipientNodeId])
+  @@index([senderNodeId])
+  @@index([threadId])
+  @@map("messages")
+}
+
+/// Communication outbox event (T-10.1). Tenant-scoped (RLS).
+model CommunicationEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([messageId])
+  @@map("communication_events")
+}
+
+/// Aggregated agent performance snapshot maintained by the Learning Engine
+/// (T-8.5). Derived from Critique records; does NOT mutate any agent definition.
+/// One row per (tenant, agent). Tenant/org-scoped (RLS).
+model AgentPerformance {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  orgId          String   @map("org_id") @db.Uuid
+  agentId        String   @map("agent_id") @db.Uuid
+  runs           Int      @default(0)
+  avgQuality     Float    @default(0) @map("avg_quality")
+  successRate    Float    @default(0) @map("success_rate")
+  failureRate    Float    @default(0) @map("failure_rate")
+  revisionRate   Float    @default(0) @map("revision_rate")
+  escalationRate Float    @default(0) @map("escalation_rate")
+  avgConfidence  Float    @default(0) @map("avg_confidence")
+  reputation     Float    @default(0.5)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, agentId])
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("agent_performance")
+}
+
+/// A versioned, auditable, eval-gated learning proposal (T-8.5). type: one of
+/// prompt_improvement|quality_rule_adjustment|skill_gap|tool_gap|knowledge_gap|
+/// escalation_rule_adjustment|retry_rule_adjustment. status starts at `proposed`
+/// — proposals NEVER mutate live agent definitions without explicit approval.
+/// Tenant/org-scoped (RLS).
+model LearningRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  orgId            String   @map("org_id") @db.Uuid
+  agentId          String   @map("agent_id") @db.Uuid
+  /// The immutable agent version this proposal was derived against (not mutated).
+  agentVersion     Int?     @map("agent_version")
+  type             String
+  status           String   @default("proposed")
+  rationale        Json     @default("{}")
+  proposedChange   Json     @default("{}") @map("proposed_change")
+  evalGatePassed   Boolean  @default(false) @map("eval_gate_passed")
+  evalGateReason   String?  @map("eval_gate_reason")
+  basedOnCritiques Int      @default(0) @map("based_on_critiques")
+  confidence       Float    @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([agentId])
+  @@map("learning_records")
+}
+
+/// Learning outbox event (T-8.5). Tenant-scoped (RLS).
+model LearningEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  learningRecordId String   @map("learning_record_id") @db.Uuid
+  type             String
+  payload          Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([learningRecordId])
+  @@map("learning_events")
+}
+
+/// A plan: the decomposition of a goal/mission into a task DAG (T-8.1).
+/// Tenant/org-scoped (RLS). status: planning|active|completed|failed|cancelled.
+model Plan {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id") @db.Uuid
+  orgId               String   @map("org_id") @db.Uuid
+  title               String
+  objective           String   @default("")
+  status              String   @default("planning")
+  targetNodeId        String?  @map("target_node_id") @db.Uuid
+  budgetReservationId String?  @map("budget_reservation_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("plans")
+}
+
+/// Planning outbox event (T-8.1). Tenant-scoped (RLS).
+model PlanEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  planId    String   @map("plan_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([planId])
+  @@map("plan_events")
+}
+
+/// Task — the unit of dispatchable work (T-7.2). Tenant/org-scoped (RLS).
+/// Lifecycle in `status`: draft|ready|scheduled|in_progress|in_review|done|
+/// failed|cancelled|escalated.
+model Task {
+  id                   String    @id @default(uuid()) @db.Uuid
+  tenantId             String    @map("tenant_id") @db.Uuid
+  orgId                String    @map("org_id") @db.Uuid
+  title                String
+  status               String    @default("draft")
+  planId               String?   @map("plan_id") @db.Uuid
+  priority             Int       @default(3)
+  deadline             DateTime?
+  costEstimate         Decimal?  @map("cost_estimate") @db.Decimal(18, 2)
+  budgetReservationId  String?   @map("budget_reservation_id") @db.Uuid
+  assignedAgentId      String?   @map("assigned_agent_id") @db.Uuid
+  assignedAgentVersion Int?      @map("assigned_agent_version")
+  assignedNodeId       String?   @map("assigned_node_id") @db.Uuid
+  qualityMinScore      Float?    @map("quality_min_score")
+  rubricId             String?   @map("rubric_id")
+  inputData            Json      @default("{}") @map("input_data")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  dependencies TaskDependency[] @relation("taskDeps")
+  dependents   TaskDependency[] @relation("dependsOn")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([status])
+  @@map("tasks")
+}
+
+/// Task dependency edge (DAG): `taskId` depends on `dependsOnTaskId` (T-7.2).
+model TaskDependency {
+  taskId          String @map("task_id") @db.Uuid
+  dependsOnTaskId String @map("depends_on_task_id") @db.Uuid
+  tenantId        String @map("tenant_id") @db.Uuid
+
+  task      Task @relation("taskDeps", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOn Task @relation("dependsOn", fields: [dependsOnTaskId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnTaskId])
+  @@index([tenantId])
+  @@index([dependsOnTaskId])
+  @@map("task_dependencies")
+}
+
+/// Task lifecycle event outbox (T-7.2). Tenant-scoped (RLS).
+model TaskEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  taskId    String   @map("task_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([taskId])
+  @@map("task_events")
+}
+
+/// Org Graph node (T-3.1): executive | department | team | manager | agent.
+/// Typed, versioned; tenant/org-scoped (RLS). `data` holds node attributes.
+model OrgNode {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  orgId     String   @map("org_id") @db.Uuid
+  type      String
+  name      String
+  status    String   @default("active")
+  version   Int      @default(1)
+  data      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  edgesFrom OrgEdge[]        @relation("edgeFrom")
+  edgesTo   OrgEdge[]        @relation("edgeTo")
+  versions  OrgNodeVersion[]
+  budget    NodeBudget?
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("org_nodes")
+}
+
+/// Budget allocated to an org-graph node (T-3.2). Effective limit cascades down
+/// the manages hierarchy (min over self + ancestors). Tenant-scoped (RLS).
+model NodeBudget {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  nodeId      String   @unique @map("node_id") @db.Uuid
+  limitAmount Decimal  @map("limit_amount") @db.Decimal(18, 2)
+  currency    String   @default("USD")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  node OrgNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("node_budgets")
+}
+
+/// Pre-spend hold against a node's budget (T-3.2). status: active|released|committed.
+model BudgetReservation {
+  id         String    @id @default(uuid()) @db.Uuid
+  tenantId   String    @map("tenant_id") @db.Uuid
+  orgId      String    @map("org_id") @db.Uuid
+  nodeId     String    @map("node_id") @db.Uuid
+  amount     Decimal   @db.Decimal(18, 2)
+  status     String    @default("active")
+  reason     String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  releasedAt DateTime? @map("released_at")
+
+  @@index([tenantId])
+  @@index([nodeId])
+  @@map("budget_reservations")
+}
+
+/// Recorded spend against a node's budget (T-3.2).
+model BudgetLedger {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  orgId         String   @map("org_id") @db.Uuid
+  nodeId        String   @map("node_id") @db.Uuid
+  amount        Decimal  @db.Decimal(18, 2)
+  reservationId String?  @map("reservation_id") @db.Uuid
+  description   String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([nodeId])
+  @@map("budget_ledger")
+}
+
+/// Org Graph edge (T-3.1): manages | reports_to | delegates_to | collaborates_with.
+model OrgEdge {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  orgId      String   @map("org_id") @db.Uuid
+  fromNodeId String   @map("from_node_id") @db.Uuid
+  toNodeId   String   @map("to_node_id") @db.Uuid
+  type       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  fromNode OrgNode @relation("edgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   OrgNode @relation("edgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId, type])
+  @@index([tenantId])
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@map("org_edges")
+}
+
+/// Immutable snapshot of a node at a version (T-3.1) — audit-friendly history.
+model OrgNodeVersion {
+  id        String   @id @default(uuid()) @db.Uuid
+  nodeId    String   @map("node_id") @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  version   Int
+  type      String
+  name      String
+  status    String
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  node OrgNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([nodeId, version])
+  @@index([tenantId])
+  @@map("org_node_versions")
+}
+
+/// Reconciliation/outbox event for the Org Graph (T-3.1). Tenant-scoped (RLS).
+model OrgEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  type        String
+  payload     Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@map("org_events")
+}
+
+/// Short-lived capability grant for an agent (T-2.8). `id` is the token jti; the
+/// row is the authoritative revocation/expiry record. Tenant-scoped (RLS).
+/// agentId references the (future) agents table once E4 lands.
+model CapabilityGrant {
+  id        String    @id @db.Uuid
+  agentId   String    @map("agent_id") @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  orgId     String?   @map("org_id") @db.Uuid
+  taskId    String?   @map("task_id") @db.Uuid
+  scopes    String[]  @default([])
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([agentId])
+  @@map("capability_grants")
+}
+
+/// Global permission catalog (action keys, e.g. "organization:read"). Not tenant-scoped.
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// A role within a tenant (org-scoped when orgId set, else tenant-wide). RLS.
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  orgId     String?  @map("org_id") @db.Uuid
+  key       String
+  name      String
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rolePermissions RolePermission[]
+  memberRoles     MembershipRole[]
+
+  @@unique([tenantId, orgId, key])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+/// Role -> Permission grant. tenantId denormalized for RLS. RLS.
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+  tenantId     String @map("tenant_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([tenantId])
+  @@map("role_permissions")
+}
+
+/// Assignment of a Role to a Membership. tenantId denormalized for RLS. RLS.
+model MembershipRole {
+  membershipId String   @map("membership_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+  @@index([tenantId])
+  @@index([roleId])
+  @@map("membership_roles")
+}
+
+/// Custom (white-label) domain owned by a tenant.
+model CustomDomain {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  domain             String    @unique
+  status             String    @default("pending")
+  verificationMethod String    @default("dns-txt") @map("verification_method")
+  verificationToken  String?   @map("verification_token")
+  verifiedAt         DateTime? @map("verified_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("custom_domains")
+}
+
+/// Scoped machine credential for an organization. Only the hash is stored.
+model ApiKey {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String
+  prefix         String    @unique
+  hashedKey      String    @unique @map("hashed_key")
+  scopes         String[]  @default([])
+  lastUsedAt     DateTime? @map("last_used_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("api_keys")
+}
+
+/// Agency white-label profile. One per tenant (agency). Tenant-scoped (RLS).
+model AgencyProfile {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @unique @map("tenant_id") @db.Uuid
+  agencyName           String   @map("agency_name")
+  brandName            String   @map("brand_name")
+  logoUrl              String?  @map("logo_url")
+  accentColor          String?  @map("accent_color")
+  supportEmail         String?  @map("support_email")
+  defaultLocale        String   @default("en-US") @map("default_locale")
+  defaultCurrency      String   @default("USD") @map("default_currency")
+  allowedClientRegions String[] @default([]) @map("allowed_client_regions")
+  enabledModules       Json     @default("[]") @map("enabled_modules")
+  whiteLabelEnabled    Boolean  @default(false) @map("white_label_enabled")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("agency_profiles")
+}
+
+/// Client workspace managed by an agency org. Tenant-scoped (RLS).
+model ClientWorkspace {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  agencyOrgId          String   @map("agency_org_id") @db.Uuid
+  clientName           String   @map("client_name")
+  industry             String?
+  countryCode          String   @default("GLOBAL") @map("country_code")
+  region               String?
+  jurisdictionDefaults Json     @default("{}") @map("jurisdiction_defaults")
+  enabledAgents        String[] @default([]) @map("enabled_agents")
+  enabledModules       String[] @default([]) @map("enabled_modules")
+  status               String   @default("pending")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  featureFlags FeatureFlags[]
+
+  @@index([tenantId])
+  @@index([agencyOrgId])
+  @@index([status])
+  @@map("client_workspaces")
+}
+
+/// Feature/module flags per tenant+org (optionally scoped to a client workspace). Tenant-scoped (RLS).
+model FeatureFlags {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  clientWorkspaceId String?  @map("client_workspace_id") @db.Uuid
+  runtime           Boolean  @default(true)
+  memory            Boolean  @default(true)
+  tools             Boolean  @default(true)
+  integrations      Boolean  @default(true)
+  financeAgent      Boolean  @default(false) @map("finance_agent")
+  salesAgent        Boolean  @default(false) @map("sales_agent")
+  supportAgent      Boolean  @default(false) @map("support_agent")
+  reporting         Boolean  @default(false)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  clientWorkspace ClientWorkspace? @relation(fields: [clientWorkspaceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([clientWorkspaceId])
+  @@map("feature_flags")
+}
+
+/// Agency outbox event. Tenant-scoped (RLS).
+model AgencyEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  refId     String?  @map("ref_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([refId])
+  @@map("agency_events")
+}
+
+/// Billing subscription per tenant (optionally org-scoped). Tenant-scoped (RLS).
+model BillingSubscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  orgId              String?   @map("org_id") @db.Uuid
+  planKey            String    @map("plan_key")
+  status             String    @default("trialing")
+  trialEndsAt        DateTime? @map("trial_ends_at")
+  currentPeriodStart DateTime  @default(now()) @map("current_period_start")
+  currentPeriodEnd   DateTime? @map("current_period_end")
+  cancelledAt        DateTime? @map("cancelled_at")
+  customLimits       Json      @default("{}") @map("custom_limits")
+  externalRef        String?   @map("external_ref")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([status])
+  @@map("billing_subscriptions")
+}
+
+/// Billing outbox event. Tenant-scoped (RLS).
+model BillingEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  subId     String?  @map("sub_id") @db.Uuid
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([subId])
+  @@map("billing_events")
+}
+
+/// Automation OS workspace. This complements the platform Organization model
+/// with the workspace_id surface expected by pack deployment, ROI, activity,
+/// approvals, and agency client operations.
+model Workspace {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String?  @map("org_id") @db.Uuid
+  name        String
+  slug        String
+  type        String   @default("business")
+  status      String   @default("active")
+  industryKey String?  @map("industry_key")
+  brandMeta   Json     @default("{}") @map("brand_meta")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  members                WorkspaceMember[]
+  agencyClientWorkspaces AgencyClientWorkspace[]   @relation("AgencyWorkspace")
+  clientAgencyWorkspaces AgencyClientWorkspace[]   @relation("ClientWorkspace")
+  packDeployments        WorkspacePackDeployment[]
+  deployedWorkflows      DeployedWorkflow[]
+  agents                 Agent[]
+  workspaceIntegrations  WorkspaceIntegration[]
+  dataSources            DataSource[]
+  uploadedFiles          UploadedFile[]
+  businessObjects        BusinessObject[]
+  activityLogs           ActivityLog[]
+  roiMetrics             RoiMetric[]
+  workflowRoiSnapshots   WorkflowRoiSnapshot[]
+  approvals              Approval[]
+  agentRuns              AgentRun[]
+  automationEvents       AutomationEvent[]
+  executionLogs          ExecutionLog[]
+  usageEvents            UsageEvent[]
+  roiEvents              RoiEvent[]
+  subscription           WorkspaceSubscription?
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([industryKey])
+  @@map("workspaces")
+}
+
+/// Workspace-level membership with role metadata. User is optional so invited
+/// members can exist before signup.
+model WorkspaceMember {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid
+  email       String?
+  role        String   @default("member")
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, userId])
+  @@index([tenantId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+/// Agency-managed client workspace link. Used for white-label pack deployment,
+/// client-level ROI, approvals, and activity feeds.
+model AgencyClientWorkspace {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  agencyWorkspaceId String   @map("agency_workspace_id") @db.Uuid
+  clientWorkspaceId String   @map("client_workspace_id") @db.Uuid
+  clientName        String   @map("client_name")
+  industryKey       String?  @map("industry_key")
+  status            String   @default("active")
+  brandingMeta      Json     @default("{}") @map("branding_meta")
+  approvalPolicy    Json     @default("{}") @map("approval_policy")
+  roiReportConfig   Json     @default("{}") @map("roi_report_config")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  agencyWorkspace Workspace @relation("AgencyWorkspace", fields: [agencyWorkspaceId], references: [id], onDelete: Cascade)
+  clientWorkspace Workspace @relation("ClientWorkspace", fields: [clientWorkspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyWorkspaceId, clientWorkspaceId])
+  @@index([tenantId])
+  @@index([agencyWorkspaceId])
+  @@index([clientWorkspaceId])
+  @@map("agency_client_workspaces")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTOMATION OS — Industry Packs, Agents, Workflow Engine, ROI, Activity
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Global catalog of industry packs. Not tenant-scoped.
+model IndustryPack {
+  id                   String   @id @default(uuid()) @db.Uuid
+  key                  String   @unique
+  name                 String
+  icon                 String
+  color                String
+  headline             String
+  description          String
+  hoursSaved           Int      @default(0) @map("hours_saved")
+  status               String   @default("demo")
+  targetBuyer          String   @default("") @map("target_buyer")
+  businessOutcome      String   @default("") @map("business_outcome")
+  roiEstimate          String   @default("") @map("roi_estimate")
+  sampleOutput         String   @default("") @map("sample_output")
+  dashboardKpis        Json     @default("[]") @map("dashboard_kpis")
+  requiredIntegrations Json     @default("[]") @map("required_integrations")
+  approvalRequirements Json     @default("[]") @map("approval_requirements")
+  setupStatus          String   @default("demo") @map("setup_status")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  workflows         IndustryPackWorkflow[]
+  agents            IndustryPackAgent[]
+  packDeployments   WorkspacePackDeployment[]
+  deployedWorkflows DeployedWorkflow[]
+
+  @@map("industry_packs")
+}
+
+/// M2M: industry pack -> workflow template.
+model IndustryPackWorkflow {
+  packId       String @map("pack_id") @db.Uuid
+  workflowKey  String @map("workflow_key")
+  workflowName String @default("") @map("workflow_name")
+  baseType     String @default("") @map("base_type")
+  config       Json   @default("{}")
+  sortOrder    Int    @default(0) @map("sort_order")
+
+  pack IndustryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@id([packId, workflowKey])
+  @@map("industry_pack_workflows")
+}
+
+/// M2M: industry pack -> agent definition.
+model IndustryPackAgent {
+  packId    String @map("pack_id") @db.Uuid
+  agentKey  String @map("agent_key")
+  agentName String @default("") @map("agent_name")
+  role      String @default("")
+  sortOrder Int    @default(0) @map("sort_order")
+
+  pack IndustryPack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@id([packId, agentKey])
+  @@map("industry_pack_agents")
+}
+
+/// Global catalog of reusable agent definitions.
+model AgentDefinition {
+  id                   String   @id @default(uuid()) @db.Uuid
+  key                  String   @unique
+  name                 String
+  icon                 String
+  color                String
+  tagline              String
+  description          String
+  inputs               Json     @default("[]")
+  outputs              Json     @default("[]")
+  approvalRequired     Boolean  @default(false) @map("approval_required")
+  integrationRequired  Boolean  @default(false) @map("integration_required")
+  integrations         Json     @default("[]")
+  compatibleWorkflows  Json     @default("[]") @map("compatible_workflows")
+  industries           Json     @default("[]")
+  actionsPerformed     Json     @default("[]") @map("actions_performed")
+  approvalRequirements Json     @default("[]") @map("approval_requirements")
+  status               String   @default("demo")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  agents         Agent[]
+  templateAgents WorkflowTemplateAgent[]
+
+  @@map("agent_definitions")
+}
+
+/// Workspace-owned agent instance derived from the global agent library.
+model Agent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  definitionId String?  @map("definition_id") @db.Uuid
+  key          String
+  name         String
+  role         String   @default("")
+  status       String   @default("demo")
+  config       Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  workspace              Workspace               @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  definition             AgentDefinition?        @relation(fields: [definitionId], references: [id], onDelete: SetNull)
+  deployedWorkflowAgents DeployedWorkflowAgent[]
+
+  @@unique([workspaceId, key])
+  @@index([tenantId])
+  @@index([workspaceId])
+  @@index([definitionId])
+  @@map("agents")
+}
+
+/// Global catalog of workflow templates.
+model WorkflowTemplate {
+  id                   String   @id @default(uuid()) @db.Uuid
+  key                  String   @unique
+  name                 String
+  icon                 String
+  color                String
+  baseType             String   @default("") @map("base_type")
+  industryKey          String?  @map("industry_key")
+  trigger              String
+  businessUseCase      String   @default("") @map("business_use_case")
+  requiredInputs       Json     @default("[]") @map("required_inputs")
+  requiredIntegrations Json     @default("[]") @map("required_integrations")
+  approvalCheckpoints  Json     @default("[]") @map("approval_checkpoints")
+  roiMetricsTracked    Json     @default("[]") @map("roi_metrics_tracked")
+  sampleOutput         String   @default("") @map("sample_output")
+  roiEstimate          String   @default("") @map("roi_estimate")
+  setupStatus          String   @default("demo") @map("setup_status")
+  status               String   @default("demo")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  steps             WorkflowTemplateStep[]
+  agents            WorkflowTemplateAgent[]
+  integrations      WorkflowTemplateIntegration[]
+  deployedWorkflows DeployedWorkflow[]
+
+  @@index([industryKey])
+  @@index([baseType])
+  @@map("workflow_templates")
+}
+
+/// Steps within a workflow template.
+model WorkflowTemplateStep {
+  id              String  @id @default(uuid()) @db.Uuid
+  workflowId      String  @map("workflow_id") @db.Uuid
+  stepNumber      Int     @map("step_number")
+  label           String
+  agentKey        String  @map("agent_key")
+  humanCheckpoint Boolean @default(false) @map("human_checkpoint")
+  /// Execution engine step type: trigger|ai_agent|action|approval|condition|delay|log_output|integration_action|webhook_response
+  stepType        String  @default("action") @map("step_type")
+  /// Execution-time configuration (integration key, action name, condition expr, delay ms, etc).
+  config          Json    @default("{}")
+  maxRetries      Int     @default(0) @map("max_retries")
+  inputSchema     Json    @default("{}") @map("input_schema")
+  outputSchema    Json    @default("{}") @map("output_schema")
+
+  workflow WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@map("workflow_template_steps")
+}
+
+/// M2M: workflow template -> agent definition.
+model WorkflowTemplateAgent {
+  workflowId String @map("workflow_id") @db.Uuid
+  agentKey   String @map("agent_key")
+  role       String @default("")
+  sortOrder  Int    @default(0) @map("sort_order")
+
+  workflow        WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  agentDefinition AgentDefinition  @relation(fields: [agentKey], references: [key], onDelete: Cascade)
+
+  @@id([workflowId, agentKey])
+  @@index([agentKey])
+  @@map("workflow_template_agents")
+}
+
+/// M2M: workflow template -> required integration key.
+model WorkflowTemplateIntegration {
+  workflowId     String  @map("workflow_id") @db.Uuid
+  integrationKey String  @map("integration_key")
+  required       Boolean @default(true)
+  purpose        String  @default("")
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  workflow WorkflowTemplate @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@id([workflowId, integrationKey])
+  @@index([integrationKey])
+  @@map("workflow_template_integrations")
+}
+
+/// Workspace-level record that a full industry pack was deployed.
+model WorkspacePackDeployment {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  packId      String   @map("pack_id") @db.Uuid
+  status      String   @default("demo")
+  deployedBy  String?  @map("deployed_by") @db.Uuid
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pack              IndustryPack       @relation(fields: [packId], references: [id])
+  deployedWorkflows DeployedWorkflow[]
+
+  @@unique([workspaceId, packId])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([packId])
+  @@map("workspace_pack_deployments")
+}
+
+/// A workflow template deployed into an org workspace. Tenant+org scoped (RLS).
+model DeployedWorkflow {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  workspaceId       String?  @map("workspace_id") @db.Uuid
+  packDeploymentId  String?  @map("pack_deployment_id") @db.Uuid
+  templateId        String   @map("template_id") @db.Uuid
+  packId            String?  @map("pack_id") @db.Uuid
+  name              String
+  status            String   @default("demo")
+  mode              String   @default("demo")
+  /// Locked version number. Incremented each time the workflow is (re)published; the
+  /// value is copied onto every WorkflowRun so a run always reflects the version that
+  /// was active at start time, even if the workflow is edited/republished later.
+  version           Int      @default(1)
+  publishedAt       DateTime? @map("published_at")
+  /// Workflow lifecycle: draft | active | paused | archived. Distinct from `status`,
+  /// which tracks integration readiness (ready/demo/requires_integration/custom_setup).
+  lifecycleStatus   String   @default("draft") @map("lifecycle_status")
+  deployedAt        DateTime @default(now()) @map("deployed_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  settings          Json     @default("{}")
+  clientWorkspaceId String?  @map("client_workspace_id") @db.Uuid
+
+  workspace               Workspace?                         @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  packDeployment          WorkspacePackDeployment?           @relation(fields: [packDeploymentId], references: [id], onDelete: SetNull)
+  template                WorkflowTemplate                   @relation(fields: [templateId], references: [id])
+  pack                    IndustryPack?                      @relation(fields: [packId], references: [id])
+  steps                   DeployedWorkflowStep[]
+  agents                  DeployedWorkflowAgent[]
+  workflowSetting         WorkflowSetting?
+  integrationRequirements DeploymentIntegrationRequirement[]
+  runs                    WorkflowRun[]
+  roiSnapshots            WorkflowRoiSnapshot[]
+  approvals               Approval[]
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([packDeploymentId])
+  @@index([templateId])
+  @@map("deployed_workflows")
+}
+
+/// A copied step inside a deployed workflow. This preserves the template at
+/// deployment time even if the global template changes later.
+model DeployedWorkflowStep {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String?  @map("workspace_id") @db.Uuid
+  deployedWorkflowId String   @map("deployed_workflow_id") @db.Uuid
+  stepNumber         Int      @map("step_number")
+  name               String
+  agentKey           String   @map("agent_key")
+  approvalRequired   Boolean  @default(false) @map("approval_required")
+  status             String   @default("pending")
+  /// Execution engine step type: trigger|ai_agent|action|approval|condition|delay|log_output|integration_action|webhook_response
+  stepType           String   @default("action") @map("step_type")
+  /// Execution-time configuration (integration key, action name, condition expr, delay ms, etc).
+  config             Json     @default("{}")
+  retryCount         Int      @default(0) @map("retry_count")
+  maxRetries         Int      @default(0) @map("max_retries")
+  durationMs         Int?     @map("duration_ms")
+  error              Json?
+  inputSchema        Json     @default("{}") @map("input_schema")
+  outputSchema       Json     @default("{}") @map("output_schema")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  deployedWorkflow DeployedWorkflow @relation(fields: [deployedWorkflowId], references: [id], onDelete: Cascade)
+
+  @@unique([deployedWorkflowId, stepNumber])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([deployedWorkflowId])
+  @@map("deployed_workflow_steps")
+}
+
+/// Mapped agent instance for a deployed workflow.
+model DeployedWorkflowAgent {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String?  @map("workspace_id") @db.Uuid
+  deployedWorkflowId String   @map("deployed_workflow_id") @db.Uuid
+  agentId            String?  @map("agent_id") @db.Uuid
+  agentKey           String   @map("agent_key")
+  role               String   @default("")
+  status             String   @default("demo")
+  config             Json     @default("{}")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  deployedWorkflow DeployedWorkflow @relation(fields: [deployedWorkflowId], references: [id], onDelete: Cascade)
+  agent            Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@unique([deployedWorkflowId, agentKey])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([agentId])
+  @@map("deployed_workflow_agents")
+}
+
+/// Runtime settings for a deployed workflow.
+model WorkflowSetting {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String?  @map("workspace_id") @db.Uuid
+  deployedWorkflowId String   @unique @map("deployed_workflow_id") @db.Uuid
+  mode               String   @default("demo")
+  approvalPolicy     Json     @default("{}") @map("approval_policy")
+  integrationPolicy  Json     @default("{}") @map("integration_policy")
+  roiBaseline        Json     @default("{}") @map("roi_baseline")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  deployedWorkflow DeployedWorkflow @relation(fields: [deployedWorkflowId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@map("workflow_settings")
+}
+
+/// Checklist row for an integration needed by a deployed workflow.
+model DeploymentIntegrationRequirement {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String?  @map("workspace_id") @db.Uuid
+  deployedWorkflowId String   @map("deployed_workflow_id") @db.Uuid
+  integrationKey     String   @map("integration_key")
+  status             String   @default("not_connected")
+  required           Boolean  @default(true)
+  notes              String   @default("")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  deployedWorkflow DeployedWorkflow @relation(fields: [deployedWorkflowId], references: [id], onDelete: Cascade)
+
+  @@unique([deployedWorkflowId, integrationKey])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([integrationKey])
+  @@map("deployment_integration_requirements")
+}
+
+/// A single execution of a deployed workflow. Tenant+org scoped (RLS).
+model WorkflowRun {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  orgId              String    @map("org_id") @db.Uuid
+  workspaceId        String?   @map("workspace_id") @db.Uuid
+  deployedWorkflowId String    @map("deployed_workflow_id") @db.Uuid
+  startedByUserId    String?   @map("started_by_user_id") @db.Uuid
+  status             String    @default("queued")
+  /// manual | webhook
+  triggerType        String    @default("manual") @map("trigger_type")
+  /// Copy of DeployedWorkflow.version at the moment the run started (workflow version lock).
+  workflowVersion    Int       @default(1) @map("workflow_version")
+  currentStep        Int       @default(0) @map("current_step")
+  inputData          Json      @default("{}") @map("input_data")
+  outputSummary      String?   @map("output_summary")
+  errorMessage       String?   @map("error_message")
+  startedAt          DateTime? @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  deployedWorkflow DeployedWorkflow  @relation(fields: [deployedWorkflowId], references: [id], onDelete: Cascade)
+  steps            WorkflowRunStep[]
+  agentRuns        AgentRun[]
+  approvals        Approval[]
+  executionLogs    ExecutionLog[]
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([deployedWorkflowId])
+  @@index([status])
+  @@map("workflow_runs")
+}
+
+/// A step within a workflow run. Tenant-scoped (RLS).
+model WorkflowRunStep {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Uuid
+  orgId            String?   @map("org_id") @db.Uuid
+  workspaceId      String?   @map("workspace_id") @db.Uuid
+  runId            String    @map("run_id") @db.Uuid
+  stepNumber       Int       @map("step_number")
+  label            String
+  agentKey         String    @map("agent_key")
+  status           String    @default("pending")
+  /// trigger|ai_agent|action|approval|condition|delay|log_output|integration_action|webhook_response
+  stepType         String    @default("action") @map("step_type")
+  approvalRequired Boolean   @default(false) @map("approval_required")
+  inputData        Json      @default("{}") @map("input_data")
+  outputData       Json      @default("{}") @map("output_data")
+  error            Json?
+  retryCount       Int       @default(0) @map("retry_count")
+  maxRetries       Int       @default(0) @map("max_retries")
+  durationMs       Int?      @map("duration_ms")
+  logs             String?
+  errorMessage     String?   @map("error_message")
+  startedAt        DateTime? @map("started_at")
+  completedAt      DateTime? @map("completed_at")
+
+  run       WorkflowRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentRuns AgentRun[]
+
+  @@unique([runId, stepNumber])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([runId])
+  @@map("workflow_run_steps")
+}
+
+/// Workflow-specific approval request. Tenant+org scoped (RLS).
+model WorkflowApproval {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  orgId           String    @map("org_id") @db.Uuid
+  workspaceId     String?   @map("workspace_id") @db.Uuid
+  runId           String    @map("run_id") @db.Uuid
+  stepNumber      Int       @map("step_number")
+  agentKey        String    @map("agent_key")
+  actionType      String    @default("risky_action") @map("action_type")
+  description     String
+  proposedAction  Json      @default("{}") @map("proposed_action")
+  status          String    @default("pending")
+  reviewedBy      String?   @map("reviewed_by") @db.Uuid
+  reviewedAt      DateTime? @map("reviewed_at")
+  reviewerComment String?   @map("reviewer_comment")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([runId])
+  @@index([status])
+  @@map("workflow_approvals")
+}
+
+/// General approval table for workflow, pack, and external-action approvals.
+/// External sends remain blocked until both required integration and approval
+/// rules are satisfied.
+model Approval {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  orgId              String    @map("org_id") @db.Uuid
+  workspaceId        String    @map("workspace_id") @db.Uuid
+  deployedWorkflowId String?   @map("deployed_workflow_id") @db.Uuid
+  workflowRunId      String?   @map("workflow_run_id") @db.Uuid
+  actionType         String    @map("action_type")
+  title              String
+  description        String
+  proposedAction     Json      @default("{}") @map("proposed_action")
+  status             String    @default("pending")
+  requestedBy        String?   @map("requested_by") @db.Uuid
+  approvedBy         String?   @map("approved_by") @db.Uuid
+  approvedAt         DateTime? @map("approved_at")
+  rejectedBy         String?   @map("rejected_by") @db.Uuid
+  rejectedAt         DateTime? @map("rejected_at")
+  changesRequestedBy String?   @map("changes_requested_by") @db.Uuid
+  changesRequestedAt DateTime? @map("changes_requested_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deployedWorkflow DeployedWorkflow? @relation(fields: [deployedWorkflowId], references: [id], onDelete: SetNull)
+  workflowRun      WorkflowRun?      @relation(fields: [workflowRunId], references: [id], onDelete: SetNull)
+  comments         ApprovalComment[]
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([deployedWorkflowId])
+  @@index([workflowRunId])
+  @@index([status])
+  @@index([actionType])
+  @@map("approvals")
+}
+
+model ApprovalComment {
+  id         String   @id @default(uuid()) @db.Uuid
+  approvalId String   @map("approval_id") @db.Uuid
+  authorId   String?  @map("author_id") @db.Uuid
+  comment    String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  approval Approval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+
+  @@index([approvalId])
+  @@map("approval_comments")
+}
+
+/// An available integration type in the catalog.
+model IntegrationDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  category    String
+  icon        String?
+  description String
+  authMethod  String   @default("oauth") @map("auth_method")
+  docsUrl     String?  @map("docs_url")
+  status      String   @default("available")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspaceIntegrations WorkspaceIntegration[]
+
+  @@map("integration_definitions")
+}
+
+/// Automation OS integration catalog. This mirrors integration_definitions but
+/// uses the requested table name and status vocabulary for pack deployment.
+model Integration {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  category    String
+  icon        String?
+  description String
+  authMethod  String   @default("oauth") @map("auth_method")
+  status      String   @default("not_connected")
+  demoNotes   String   @default("") @map("demo_notes")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspaceIntegrations WorkspaceIntegration[]
+
+  @@map("integrations")
+}
+
+/// A workspace connection to an integration. Tenant+org scoped (RLS).
+model WorkspaceIntegration {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  orgId          String    @map("org_id") @db.Uuid
+  workspaceId    String?   @map("workspace_id") @db.Uuid
+  definitionId   String    @map("definition_id") @db.Uuid
+  integrationId  String?   @map("integration_id") @db.Uuid
+  status         String    @default("not_connected")
+  /// none|api_key|oauth|webhook|mock
+  authType       String    @default("none") @map("auth_type")
+  credentialRef  String?   @map("credential_ref")
+  configSnapshot Json      @default("{}") @map("config_snapshot")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  lastErrorAt    DateTime? @map("last_error_at")
+  connectedBy    String?   @map("connected_by") @db.Uuid
+  connectedAt    DateTime? @map("connected_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  definition  IntegrationDefinition @relation(fields: [definitionId], references: [id])
+  integration Integration?          @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  workspace   Workspace?            @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@unique([orgId, definitionId])
+  @@unique([workspaceId, integrationId])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([integrationId])
+  @@map("workspace_integrations")
+}
+
+/// A data input source for workflows. Tenant+org scoped (RLS).
+model DataSource {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  orgId          String    @map("org_id") @db.Uuid
+  workspaceId    String?   @map("workspace_id") @db.Uuid
+  name           String
+  type           String
+  status         String    @default("active")
+  config         Json      @default("{}")
+  recordCount    Int       @default(0) @map("record_count")
+  lastIngestedAt DateTime? @map("last_ingested_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  workspace     Workspace?     @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  uploadedFiles UploadedFile[]
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@map("data_sources")
+}
+
+/// File uploaded to a data source. Tenant-scoped (RLS).
+model UploadedFile {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  workspaceId  String?  @map("workspace_id") @db.Uuid
+  dataSourceId String   @map("data_source_id") @db.Uuid
+  filename     String
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  storageKey   String   @map("storage_key")
+  parsedCount  Int      @default(0) @map("parsed_count")
+  status       String   @default("uploaded")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dataSource DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  workspace  Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([workspaceId])
+  @@index([dataSourceId])
+  @@map("uploaded_files")
+}
+
+/// Flexible industry-neutral object store. HR candidates, ecommerce orders,
+/// real-estate properties, clinic appointments, logistics shipments, and other
+/// vertical records all live here as typed JSON rather than hardcoded fields.
+model BusinessObject {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  industryKey String?  @map("industry_key")
+  objectType  String   @map("object_type")
+  externalId  String?  @map("external_id")
+  displayName String   @map("display_name")
+  status      String   @default("active")
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, objectType, externalId])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([industryKey])
+  @@index([objectType])
+  @@map("business_objects")
+}
+
+/// Immutable activity event log. Tenant+org scoped (RLS).
+model ActivityLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  orgId        String   @map("org_id") @db.Uuid
+  workspaceId  String?  @map("workspace_id") @db.Uuid
+  agentKey     String   @map("agent_key")
+  agentName    String   @map("agent_name")
+  action       String
+  count        Int      @default(1)
+  unit         String   @default("items")
+  workflowKey  String   @map("workflow_key")
+  workflowName String   @map("workflow_name")
+  status       String   @default("completed")
+  runId        String?  @map("run_id") @db.Uuid
+  meta         Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@index([agentKey])
+  @@map("activity_logs")
+}
+
+/// Current ROI metric values by workspace and metric key.
+model RoiMetric {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  metricKey   String   @map("metric_key")
+  label       String
+  value       Float    @default(0)
+  unit        String   @default("count")
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  source      String   @default("demo")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, metricKey, periodStart])
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([metricKey])
+  @@map("roi_metrics")
+}
+
+/// Per-workflow ROI impact snapshots.
+model WorkflowRoiSnapshot {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  deployedWorkflowId String?  @map("deployed_workflow_id") @db.Uuid
+  workflowKey        String   @map("workflow_key")
+  periodStart        DateTime @map("period_start")
+  periodEnd          DateTime @map("period_end")
+  hoursSaved         Float    @default(0) @map("hours_saved")
+  tasksAutomated     Int      @default(0) @map("tasks_automated")
+  salaryCostSaved    Float    @default(0) @map("salary_cost_saved")
+  revenueOpportunity Float    @default(0) @map("revenue_opportunity")
+  metrics            Json     @default("{}")
+  source             String   @default("demo")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deployedWorkflow DeployedWorkflow? @relation(fields: [deployedWorkflowId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([deployedWorkflowId])
+  @@index([workflowKey])
+  @@index([periodStart])
+  @@map("workflow_roi_snapshots")
+}
+
+/// Cumulative ROI snapshot per org per period. Tenant+org scoped (RLS).
+model RoiSnapshot {
+  id                     String   @id @default(uuid()) @db.Uuid
+  tenantId               String   @map("tenant_id") @db.Uuid
+  orgId                  String   @map("org_id") @db.Uuid
+  workspaceId            String?  @map("workspace_id") @db.Uuid
+  periodStart            DateTime @map("period_start")
+  periodEnd              DateTime @map("period_end")
+  hoursSaved             Int      @default(0) @map("hours_saved")
+  tasksAutomated         Int      @default(0) @map("tasks_automated")
+  salaryCostSaved        Int      @default(0) @map("salary_cost_saved")
+  leadsRecovered         Int      @default(0) @map("leads_recovered")
+  followUpsCompleted     Int      @default(0) @map("follow_ups_completed")
+  reportsGenerated       Int      @default(0) @map("reports_generated")
+  interviewsScheduled    Int      @default(0) @map("interviews_scheduled")
+  supportTicketsResolved Int      @default(0) @map("support_tickets_resolved")
+  revenueOpportunity     Int      @default(0) @map("revenue_opportunity")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([periodStart])
+  @@map("roi_snapshots")
+}
+
+/// Internal domain event outbox for workflow automation. Queue-ready. Tenant-scoped (RLS).
+model AutomationEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  orgId       String    @map("org_id") @db.Uuid
+  workspaceId String?   @map("workspace_id") @db.Uuid
+  type        String
+  payload     Json      @default("{}")
+  processedAt DateTime? @map("processed_at")
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([workspaceId])
+  @@index([processedAt])
+  @@index([type])
+  @@map("automation_events")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRODUCTION EXECUTION ENGINE — logs, usage, ROI events, billing plans/subscriptions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Granular, append-only execution log line for a workflow run / step. This is the
+/// source of truth for the Logs page (distinct from the human-readable ActivityLog
+/// feed). Tenant+org scoped (RLS).
+model ExecutionLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  orgId             String   @map("org_id") @db.Uuid
+  workspaceId       String?  @map("workspace_id") @db.Uuid
+  workflowRunId     String   @map("workflow_run_id") @db.Uuid
+  workflowRunStepId String?  @map("workflow_run_step_id") @db.Uuid
+  /// debug|info|warn|error
+  level             String   @default("info")
+  message           String
+  data              Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id], onDelete: Cascade)
+  workspace   Workspace?  @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([workflowRunId])
+  @@index([workflowRunStepId])
+  @@index([createdAt])
+  @@map("execution_logs")
+}
+
+/// Append-only usage event for billing/quota enforcement. One row per billable
+/// action (workflow run started, AI agent run, integration action executed).
+/// Tenant+org scoped (RLS).
+model UsageEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  orgId       String   @map("org_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  /// workflow_run | agent_run | integration_action
+  eventType   String   @map("event_type")
+  quantity    Int      @default(1)
+  workflowRunId String? @map("workflow_run_id") @db.Uuid
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@map("usage_events")
+}
+
+/// Append-only ROI event emitted per workflow run completion. Rolls up into
+/// RoiMetric / WorkflowRoiSnapshot aggregates. Tenant+org scoped (RLS).
+model RoiEvent {
+  id                 String   @id @default(uuid()) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  orgId              String   @map("org_id") @db.Uuid
+  workspaceId        String   @map("workspace_id") @db.Uuid
+  workflowRunId       String?  @map("workflow_run_id") @db.Uuid
+  deployedWorkflowId  String?  @map("deployed_workflow_id") @db.Uuid
+  metricKey          String   @map("metric_key")
+  value              Float    @default(0)
+  unit               String   @default("count")
+  source             String   @default("demo")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([workspaceId])
+  @@index([workflowRunId])
+  @@index([metricKey])
+  @@index([createdAt])
+  @@map("roi_events")
+}
+
+/// Global billing plan catalog. Free Demo / Starter / Pro / Agency. Not tenant-scoped.
+model BillingPlan {
+  id                     String   @id @default(uuid()) @db.Uuid
+  key                    String   @unique
+  name                   String
+  priceMonthlyUsd        Float    @default(0) @map("price_monthly_usd")
+  currency               String   @default("USD")
+  maxWorkflowRunsPerMonth Int?    @map("max_workflow_runs_per_month")
+  maxAgentRunsPerMonth   Int?     @map("max_agent_runs_per_month")
+  maxIntegrationActionsPerMonth Int? @map("max_integration_actions_per_month")
+  maxSeats               Int?     @map("max_seats")
+  features               Json     @default("[]")
+  isActive               Boolean  @default(true) @map("is_active")
+  sortOrder              Int      @default(0) @map("sort_order")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  subscriptions WorkspaceSubscription[]
+
+  @@map("billing_plans")
+}
+
+/// Workspace-level subscription to a BillingPlan. Ready for Stripe/Razorpay —
+/// checkoutRequired stays true and externalRef stays null until a real payment
+/// provider is wired. Tenant+org scoped (RLS).
+model WorkspaceSubscription {
+  id                 String    @id @default(uuid()) @db.Uuid
+  tenantId           String    @map("tenant_id") @db.Uuid
+  orgId              String    @map("org_id") @db.Uuid
+  workspaceId        String    @unique @map("workspace_id") @db.Uuid
+  planId             String    @map("plan_id") @db.Uuid
+  status             String    @default("active")
+  checkoutRequired   Boolean   @default(false) @map("checkout_required")
+  externalRef        String?   @map("external_ref")
+  currentPeriodStart DateTime  @default(now()) @map("current_period_start")
+  currentPeriodEnd   DateTime? @map("current_period_end")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      BillingPlan @relation(fields: [planId], references: [id])
+
+  @@index([tenantId])
+  @@index([orgId])
+  @@index([planId])
+  @@map("workspace_subscriptions")
+}

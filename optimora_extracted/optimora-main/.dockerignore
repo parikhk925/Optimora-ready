@@ -1,0 +1,51 @@
+# Optimora monorepo — Docker build context exclusions
+# Applied for all Dockerfiles built from repo root.
+
+# Dependencies (installed fresh inside image)
+node_modules
+.pnpm-store
+
+# Build outputs (rebuilt inside image)
+dist
+build
+.next
+out
+*.tsbuildinfo
+.turbo
+
+# Test / dev artifacts
+coverage
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+**/*.test.tsx
+**/*.spec.tsx
+
+# Env files — NEVER copy into image
+.env
+.env.*
+*.env
+
+# Editor / OS
+.git
+.gitignore
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.swp
+
+# Docs (not needed at runtime)
+docs
+*.md
+
+# CI / local scripts (not needed at runtime)
+infra/docker/smoke-test.mjs
+scripts/smoke-demo.mjs
+scripts/check-env.ts
+scripts/seed-demo.ts
+
+# Docker files themselves (avoid confusion)
+**/Dockerfile
+**/.dockerignore
+docker-compose*.yml

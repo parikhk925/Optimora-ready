@@ -1,0 +1,92 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# IDE and editors
+.idea/
+.vscode/
+
+# Dependencies
+node_modules/
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Production builds
+/build
+dist/
+dist
+
+# Environment files (comprehensive coverage)
+
+*token.json*
+*credentials.json*
+
+# Logs and debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dump.rdb
+
+# System files
+.DS_Store
+*.pem
+
+# Python
+__pycache__/
+*pyc*
+venv/
+.venv/
+
+# Development tools
+chainlit.md
+.chainlit
+.ipynb_checkpoints/
+.ac
+
+# Deployment
+.vercel
+
+# Data and databases
+agenthub/agents/youtube/db
+
+# Archive files and large assets
+**/*.zip
+**/*.tar.gz
+**/*.tar
+**/*.tgz
+*.pack
+*.deb
+*.dylib
+
+# Build caches
+.cache/
+
+memory/test_credentials.md
+
+# Mobile development
+android-sdk/
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
+.pnpm-store/v3/files/7a/e10486d941080e9f9e0fbeca1ed30d24b6b0adf88e8ecae404bd6beadc441d1a665f02e9599c34494557b1abb021b674588b932f430ad86a3d42b13d822c4f
+.pnpm-store/v3/files/35/9d11335d2e45ceab194fc814e520663bcd5b56d6c748b3b235bedbd20df07a1a16af4591413305ef2ba03cf78a57b15ebc48682902bea655b01063b583eca7
+frontend/node_modules/.pnpm/@next+swc-linux-arm64-gnu@15.5.19/node_modules/@next/swc-linux-arm64-gnu/next-swc.linux-arm64-gnu.node
+frontend/node_modules/.pnpm/@next+swc-linux-arm64-musl@15.5.19/node_modules/@next/swc-linux-arm64-musl/next-swc.linux-arm64-musl.node

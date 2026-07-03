@@ -1,0 +1,41 @@
+{
+  "name": "optimora",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optimora AI — Enterprise AI Operating System (white-label AI workforce platform)",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "pnpm --filter @optimora/web exec next dev -p 3000 -H 0.0.0.0",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md}\"",
+    "infra:up": "docker compose -f infra/docker/docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f infra/docker/docker-compose.dev.yml down",
+    "infra:reset": "docker compose -f infra/docker/docker-compose.dev.yml down -v",
+    "infra:logs": "docker compose -f infra/docker/docker-compose.dev.yml logs -f",
+    "infra:ps": "docker compose -f infra/docker/docker-compose.dev.yml ps",
+    "infra:config": "docker compose -f infra/docker/docker-compose.dev.yml config",
+    "infra:smoke": "node infra/docker/smoke-test.mjs",
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "check:env": "tsx scripts/check-env.ts",
+    "smoke:demo": "node scripts/smoke-demo.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^2.1.8"
+  }
+}

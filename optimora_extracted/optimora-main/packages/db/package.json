@@ -1,0 +1,31 @@
+{
+  "name": "@optimora/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --exclude \"**/*.int.test.ts\"",
+    "test:integration": "vitest run int.test",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:reset": "prisma migrate reset --force",
+    "db:studio": "prisma studio",
+    "clean": "node -e \"const fs=require('fs');['dist','.turbo'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}))\""
+  },
+  "devDependencies": {
+    "@optimora/config": "workspace:*",
+    "prisma": "^6",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@clickhouse/client": "^1.22.0",
+    "@prisma/client": "^6",
+    "@qdrant/js-client-rest": "^1.18.0"
+  }
+}

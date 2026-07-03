@@ -1,0 +1,147 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+  NODE_VERSION: "22"
+  PNPM_VERSION: "9.15.0"
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Format check
+        run: pnpm format:check
+
+  integration:
+    name: Integration gate (DB, RLS, stores)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: optimora
+          POSTGRES_PASSWORD: optimora_dev_pw
+          POSTGRES_DB: optimora
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U optimora -d optimora"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports:
+          - "6333:6333"
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.8-alpine
+        env:
+          CLICKHOUSE_USER: optimora
+          CLICKHOUSE_PASSWORD: optimora_dev_pw
+          CLICKHOUSE_DB: optimora_olap
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+        ports:
+          - "8123:8123"
+    env:
+      # CI services are reachable on localhost with default ports.
+      DIRECT_DATABASE_URL: "postgresql://optimora:optimora_dev_pw@localhost:5432/optimora?schema=public"
+      DATABASE_URL: "postgresql://optimora_app:optimora_app_pw@localhost:5432/optimora?schema=public"
+      QDRANT_URL: "http://localhost:6333"
+      CLICKHOUSE_URL: "http://localhost:8123"
+      CLICKHOUSE_USER: "optimora"
+      CLICKHOUSE_PASSWORD: "optimora_dev_pw"
+      CLICKHOUSE_DATABASE: "optimora_olap"
+      TEMPORAL_ADDRESS: "localhost:7233"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for Qdrant and ClickHouse
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:6333/readyz && curl -sf http://localhost:8123/ping && exit 0
+            sleep 2
+          done
+          echo "Stores did not become ready in time" && exit 1
+
+      # Self-contained in-memory Temporal dev server for the execution tests.
+      - name: Start Temporal dev server
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "$HOME/.temporalio/bin" >> "$GITHUB_PATH"
+          "$HOME/.temporalio/bin/temporal" server start-dev --headless --ip 0.0.0.0 &
+          for i in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/7233) >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo "Temporal did not become ready in time" && exit 1
+
+      # Apply all migrations (creates schema, RLS policies, and the app role).
+      - name: Apply migrations
+        run: pnpm --filter @optimora/db db:deploy
+
+      # Verify schema is in sync with the migration history (no drift).
+      - name: Assert no schema drift
+        run: pnpm --filter @optimora/db exec prisma migrate status
+
+      # Integration tests across the workspace: RLS denial (app role), per-org
+      # stores, and gateway tenant resolution. Runs wherever the script exists.
+      - name: Integration tests
+        run: pnpm -r --if-present test:integration

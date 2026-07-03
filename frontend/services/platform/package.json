@@ -1,0 +1,38 @@
+{
+  "name": "@optimora/platform",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "lint": "eslint src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --exclude \"**/*.int.test.ts\"",
+    "test:integration": "vitest run int.test",
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"const fs=require('fs');['dist','.turbo'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}))\""
+  },
+  "devDependencies": {
+    "@optimora/config": "workspace:*",
+    "dotenv": "^17.4.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@auth/core": "^0.34.3",
+    "@fastify/cookie": "^11.0.2",
+    "@optimora/agency": "workspace:^",
+    "@optimora/agent-contract": "workspace:^",
+    "@optimora/auth-core": "workspace:^",
+    "@optimora/execution": "workspace:^",
+    "@optimora/runtime": "workspace:^",
+    "@optimora/db": "workspace:^",
+    "@optimora/approval": "workspace:^",
+    "@optimora/billing": "workspace:^",
+    "@optimora/jurisdiction": "workspace:^",
+    "@optimora/memory": "workspace:^",
+    "@optimora/metering": "workspace:^",
+    "@optimora/org-graph": "workspace:^",
+    "fastify": "^5.8.5"
+  }
+}
