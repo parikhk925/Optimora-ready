@@ -48,7 +48,7 @@ type WorkflowSeed = {
 };
 
 const INTEGRATIONS: IntegrationSeed[] = [
-  { key: "gmail", name: "Gmail", category: "email", description: "Official Gmail API connection for email actions. Not live until OAuth is connected.", authMethod: "oauth", status: "not_connected" },
+  { key: "gmail", name: "Gmail", category: "email", description: "Real Gmail API connection for email actions via OAuth — click Connect to authorize your Google account.", authMethod: "oauth", status: "not_connected" },
   { key: "google-calendar", name: "Google Calendar", category: "calendar", description: "Official Google Calendar connection for booking and reminder workflows.", authMethod: "oauth", status: "not_connected" },
   { key: "google-sheets", name: "Google Sheets", category: "spreadsheet", description: "Read and write workspace data in Google Sheets after OAuth setup.", authMethod: "oauth", status: "not_connected" },
   { key: "whatsapp", name: "WhatsApp Business", category: "messaging", description: "Placeholder for the official WhatsApp Business API. No messages are sent until configured.", authMethod: "api_key", status: "requires_setup", demoNotes: "Official API setup required; demo mode only." },

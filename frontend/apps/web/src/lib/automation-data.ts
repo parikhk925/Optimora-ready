@@ -351,7 +351,7 @@ function toUuidOrNull(value: string | null | undefined): string | null {
 
 function fallbackIntegrations(): IntegrationStatus[] {
   return [
-    { key: "gmail", name: "Gmail", category: "email", description: "Official Gmail API. Not live until OAuth is connected.", status: "not_connected", connectedAt: null },
+    { key: "gmail", name: "Gmail", category: "email", description: "Real Gmail API via OAuth — click Connect to authorize your Google account.", status: "not_connected", connectedAt: null },
     { key: "google-calendar", name: "Google Calendar", category: "calendar", description: "Official calendar API for bookings.", status: "not_connected", connectedAt: null },
     { key: "google-sheets", name: "Google Sheets", category: "spreadsheet", description: "Sheets data source and output target.", status: "not_connected", connectedAt: null },
     { key: "whatsapp", name: "WhatsApp Business", category: "messaging", description: "Official WhatsApp Business API required. No fake sends.", status: "requires_setup", connectedAt: null },
