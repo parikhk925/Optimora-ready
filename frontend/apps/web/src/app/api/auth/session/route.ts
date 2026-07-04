@@ -15,7 +15,6 @@ export async function GET() {
     user: session.user,
     tenantId: session.tenantId,
     orgId: session.orgId,
-    demo: session.demo,
     dev: session.dev,
   });
 }

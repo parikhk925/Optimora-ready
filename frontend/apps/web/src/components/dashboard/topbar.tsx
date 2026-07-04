@@ -8,7 +8,7 @@ import type { ServerSession } from "@/lib/session";
 import { useState } from "react";
 
 interface TopbarProps {
-  initialSession: Pick<ServerSession, "user" | "tenantId" | "demo" | "dev">;
+  initialSession: Pick<ServerSession, "user" | "tenantId" | "dev">;
 }
 
 export function Topbar({ initialSession }: TopbarProps) {
@@ -20,8 +20,7 @@ export function Topbar({ initialSession }: TopbarProps) {
   const activeSession = session ?? initialSession;
   const user = activeSession.user;
   const initial = user.email.charAt(0).toUpperCase();
-  const isDemoWorkspace = Boolean(activeSession.demo || activeSession.dev);
-  const workspaceName = isDemoWorkspace ? "Demo Workspace" : ctx.agencyName;
+  const isDevStub = Boolean(activeSession.dev);
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
@@ -31,8 +30,8 @@ export function Topbar({ initialSession }: TopbarProps) {
         className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50 transition-colors"
       >
         <Building2 className="h-4 w-4 text-gray-500" />
-        <span className="font-medium text-gray-700">{workspaceName}</span>
-        <Badge variant="muted">{isDemoWorkspace ? "Demo Mode" : ctx.planKey}</Badge>
+        <span className="font-medium text-gray-700">{ctx.agencyName}</span>
+        <Badge variant="muted">{isDevStub ? "Local Dev" : ctx.planKey}</Badge>
         <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
       </button>
 

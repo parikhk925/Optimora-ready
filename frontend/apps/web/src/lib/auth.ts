@@ -1,7 +1,7 @@
 /**
- * Auth context stub — placeholder until full OIDC/session wiring.
- * Reads tenant/org from env (agency portal deployment) or uses demo values.
- * Real auth flow wires in T-20+ via session cookies + platform auth routes.
+ * Tenant context resolved from deployment env vars (agency-portal deployment).
+ * Identity itself comes from the session cookie (see session.ts); this supplies
+ * the tenant/org/branding the deployment is bound to.
  */
 export interface TenantContext {
   tenantId: string;
@@ -10,18 +10,18 @@ export interface TenantContext {
   planKey: string;
 }
 
-const DEMO_CONTEXT: TenantContext = {
+const DEFAULT_CONTEXT: TenantContext = {
   tenantId: "00000000-0000-0000-0000-000000000001",
   orgId: "00000000-0000-0000-0000-000000000002",
-  agencyName: "Demo Agency",
+  agencyName: "Optimora",
   planKey: "growth",
 };
 
 export function getTenantContext(): TenantContext {
   return {
-    tenantId: process.env.NEXT_PUBLIC_TENANT_ID ?? DEMO_CONTEXT.tenantId,
-    orgId: process.env.NEXT_PUBLIC_ORG_ID ?? DEMO_CONTEXT.orgId,
-    agencyName: process.env.NEXT_PUBLIC_AGENCY_NAME ?? DEMO_CONTEXT.agencyName,
-    planKey: process.env.NEXT_PUBLIC_PLAN_KEY ?? DEMO_CONTEXT.planKey,
+    tenantId: process.env.NEXT_PUBLIC_TENANT_ID ?? DEFAULT_CONTEXT.tenantId,
+    orgId: process.env.NEXT_PUBLIC_ORG_ID ?? DEFAULT_CONTEXT.orgId,
+    agencyName: process.env.NEXT_PUBLIC_AGENCY_NAME ?? DEFAULT_CONTEXT.agencyName,
+    planKey: process.env.NEXT_PUBLIC_PLAN_KEY ?? DEFAULT_CONTEXT.planKey,
   };
 }

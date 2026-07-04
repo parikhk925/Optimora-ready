@@ -33,27 +33,6 @@ export async function POST(req: NextRequest) {
 
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  if (session.demo) {
-    const body = (await req.json()) as { title?: string; goal?: string; context?: string };
-    const title = body.title ?? "Demo task";
-    const goal = body.goal ?? title;
-    return NextResponse.json({
-      taskId: "demo-task-0000",
-      taskTitle: title,
-      runId: "demo-run-0000",
-      runStatus: "succeeded",
-      taskStatus: "in_review",
-      output: {
-        summary: `Demo Agent processed: "${goal}". (echo model - no external actions)`,
-        nextSteps: "Review the output and confirm or escalate.",
-        confidence: "Deterministic demo - 100%",
-      },
-      tokensIn: 42,
-      tokensOut: 28,
-      modelProvider: "echo",
-      demo: true,
-    });
-  }
 
   try {
     const body = await req.json();
