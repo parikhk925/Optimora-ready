@@ -6,8 +6,34 @@
  * - TXT  → plain UTF-8 decode
  * - anything else → a real "unsupported format" error (never a faked success)
  */
-import { PDFParse } from "pdf-parse";
 import mammoth from "mammoth";
+
+/**
+ * pdf.js (used internally by pdf-parse) references browser-only canvas APIs
+ * — DOMMatrix, Path2D, ImageData — even on code paths that only extract text
+ * and never render anything. Node has none of these globals, which throws
+ * "ReferenceError: DOMMatrix is not defined" in a serverless function.
+ * Minimal no-op stand-ins are sufficient since we never actually render to
+ * canvas here — only extract text. Set before the first pdf-parse usage.
+ */
+function ensurePdfJsNodePolyfills(): void {
+  const g = globalThis as unknown as Record<string, unknown>;
+  if (typeof g.DOMMatrix === "undefined") {
+    g.DOMMatrix = class DOMMatrix {
+      constructor(_init?: unknown) {}
+    };
+  }
+  if (typeof g.Path2D === "undefined") {
+    g.Path2D = class Path2D {
+      constructor(_path?: unknown) {}
+    };
+  }
+  if (typeof g.ImageData === "undefined") {
+    g.ImageData = class ImageData {
+      constructor(_a?: unknown, _b?: unknown, _c?: unknown) {}
+    };
+  }
+}
 
 export interface ExtractResult {
   ok: boolean;
@@ -40,6 +66,8 @@ export async function extractResumeText(
   try {
     switch (kind) {
       case "pdf": {
+        ensurePdfJsNodePolyfills();
+        const { PDFParse } = await import("pdf-parse");
         const parser = new PDFParse({ data: new Uint8Array(bytes) });
         try {
           const result = await parser.getText();
