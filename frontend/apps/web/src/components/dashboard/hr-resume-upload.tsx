@@ -26,6 +26,12 @@ interface ScreeningResult {
   };
 }
 
+// Vercel enforces a hard ~4.5MB request body limit on serverless functions.
+// Reject oversized files client-side (with a clear message) instead of
+// letting the platform's own HTML error page reach our fetch() and break
+// JSON parsing.
+const MAX_FILE_BYTES = 4 * 1024 * 1024;
+
 export function HrResumeUpload() {
   const [jobDescription, setJobDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,13 +48,29 @@ export function HrResumeUpload() {
       setError("Choose at least one resume file (PDF, DOCX, or TXT).");
       return;
     }
+    const files = Array.from(fileInput.files);
+    const oversized = files.filter((f) => f.size > MAX_FILE_BYTES);
+    if (oversized.length > 0) {
+      setError(`${oversized.map((f) => f.name).join(", ")} exceed${oversized.length === 1 ? "s" : ""} the 4MB per-file limit. Please upload a smaller file.`);
+      return;
+    }
+
     const data = new FormData();
-    Array.from(fileInput.files).forEach((f) => data.append("files", f));
+    files.forEach((f) => data.append("files", f));
     if (jobDescription.trim()) data.append("jobDescription", jobDescription.trim());
 
     setBusy(true);
     try {
       const res = await fetch("/api/hr/resumes/upload", { method: "POST", body: data });
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        setError(
+          res.status === 413
+            ? "Upload rejected — the file is too large for the server to accept."
+            : `Upload failed unexpectedly (server returned status ${res.status}). Please try again with a smaller file.`,
+        );
+        return;
+      }
       const json = (await res.json()) as { ok?: boolean; results?: ScreeningResult[]; message?: string; error?: string };
       if (!res.ok && json.error === "requires_setup") {
         setError(json.message ?? "Resume storage is not configured yet.");
@@ -71,7 +93,7 @@ export function HrResumeUpload() {
         <span className="ml-auto rounded-full bg-violet-100 text-violet-700 px-2 py-0.5 text-[10px] font-bold">Live agent</span>
       </div>
       <p className="text-xs text-gray-500 mb-3">
-        Upload candidate resumes (PDF, DOCX, or TXT). The AI screener parses and scores each one against your job description. Sourcing is upload-only — no scraping.
+        Upload candidate resumes (PDF, DOCX, or TXT, up to 4MB each). The AI screener parses and scores each one against your job description. Sourcing is upload-only — no scraping.
       </p>
 
       <form onSubmit={onSubmit} className="space-y-3">

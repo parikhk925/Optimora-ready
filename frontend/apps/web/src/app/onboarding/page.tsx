@@ -51,7 +51,7 @@ export default function OnboardingPage() {
         {/* Trust footer */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-5 text-xs text-gray-400">
           {[
-            "Demo Mode — no real data touched",
+            "Sample Preview — no real data touched",
             "No credit card required",
             "No external sends without your approval",
           ].map((t) => (

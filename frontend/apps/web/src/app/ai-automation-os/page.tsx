@@ -47,12 +47,12 @@ const MODULES = [
 const HOW_IT_WORKS = [
   { num: "01", title: "Choose your industry pack", body: "Select from 13 industry-specific packs. Each one includes pre-configured agents, workflows, and a dashboard ready to run." },
   { num: "02", title: "Deploy your AI agent team", body: "Your agents are assigned roles — sales, support, finance, HR. Each knows their job, their tools, and their approval rules." },
-  { num: "03", title: "Connect your tools (optional)", body: "Wire up CRM, email, calendar, or sheets. Agents work inside your stack. In Demo Mode, they run on sample data with no external connections." },
+  { num: "03", title: "Connect your tools (optional)", body: "Wire up CRM, email, calendar, or sheets. Agents work inside your stack. In Sample Preview, they run on sample data with no external connections." },
   { num: "04", title: "Review, approve, and monitor", body: "Every sensitive action requires your approval. Every run is audited. Every output is reviewable. Full transparency, always." },
 ];
 
 const TRUST_ITEMS = [
-  "Demo Mode — no external systems touched without your setup",
+  "Sample Preview — no external systems touched without your setup",
   "All outbound actions require human approval",
   "No LinkedIn scraping. No fake integrations.",
   "Jurisdiction-aware for IN, CA, US, GB — explicit disclosure",
@@ -106,7 +106,7 @@ export default function AIAutomationOSPage() {
             </Link>
           </div>
 
-          <p className="mt-4 text-xs text-gray-400">Demo Mode available · No credit card required · No external sends without your approval</p>
+          <p className="mt-4 text-xs text-gray-400">Sample Preview available · No credit card required · No external sends without your approval</p>
 
           {/* Stats */}
           <div className="mt-14 grid grid-cols-2 gap-6 sm:grid-cols-4 border-t border-gray-100 pt-10">
@@ -217,7 +217,7 @@ export default function AIAutomationOSPage() {
               <h2 className="text-lg font-bold text-gray-900">Built on honesty</h2>
             </div>
             <p className="text-sm text-gray-600 mb-6">
-              We don&apos;t claim magic. Every capability is clearly labelled — Demo Mode, Requires Integration, Custom Setup Required, or Manual Approval Required.
+              We don&apos;t claim magic. Every capability is clearly labelled — Sample Preview, Requires Integration, Custom Setup Required, or Manual Approval Required.
             </p>
             <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {TRUST_ITEMS.map((item) => (
@@ -245,7 +245,7 @@ export default function AIAutomationOSPage() {
               Explore paid pilot
             </Link>
           </div>
-          <p className="mt-4 text-xs text-gray-500">Demo Mode available · No external sends without your approval</p>
+          <p className="mt-4 text-xs text-gray-500">Sample Preview available · No external sends without your approval</p>
         </div>
       </section>
 

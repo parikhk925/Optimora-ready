@@ -47,7 +47,7 @@ interface SolutionCard {
 }
 
 const STATUS_STYLES = {
-  demo: { bg: "bg-amber-100", text: "text-amber-700", label: "Demo Mode" },
+  demo: { bg: "bg-amber-100", text: "text-amber-700", label: "Sample Preview" },
   requires_integration: { bg: "bg-blue-100", text: "text-blue-700", label: "Requires Integration" },
   custom_setup: { bg: "bg-purple-100", text: "text-purple-700", label: "Custom Setup" },
 };

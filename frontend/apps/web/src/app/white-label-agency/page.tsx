@@ -193,8 +193,8 @@ export default function WhiteLabelAgencyPage() {
             <div>
               <p className="text-sm font-bold text-amber-900">Honesty, upfront</p>
               <p className="text-xs text-amber-800 mt-1">
-                Agency Mode features are currently in Demo Mode. Client portals, billing automation, and custom domain setup require Custom Setup.
-                All capabilities are clearly labelled — Demo Mode, Requires Integration, or Custom Setup Required. No feature is overstated.
+                Agency Mode features are currently in Sample Preview. Client portals, billing automation, and custom domain setup require Custom Setup.
+                All capabilities are clearly labelled — Sample Preview, Requires Integration, or Custom Setup Required. No feature is overstated.
               </p>
             </div>
           </div>
@@ -205,7 +205,7 @@ export default function WhiteLabelAgencyPage() {
       <section className="py-20 bg-indigo-900 text-white">
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
           <h2 className="text-3xl font-bold mb-3">Ready to build your agency on AI?</h2>
-          <p className="text-indigo-300 mb-8">Set up in 5 minutes. Deploy your first client pack in Demo Mode today.</p>
+          <p className="text-indigo-300 mb-8">Set up in 5 minutes. Deploy your first client pack in Sample Preview today.</p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <Link href="/onboarding/agency" className="inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-bold text-indigo-900 hover:bg-indigo-50 transition-colors shadow-lg">
               <Building2 className="h-4 w-4" />
