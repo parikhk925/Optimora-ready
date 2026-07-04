@@ -46,8 +46,10 @@ export async function uploadResumeToBlob(
   const key = `resumes/${tenantId}/${orgId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${safeName}`;
 
   try {
+    // Resumes contain PII — always stored with private access, never a
+    // publicly guessable URL.
     const blob = await put(key, bytes, {
-      access: "public",
+      access: "private",
       contentType,
       token: process.env.BLOB_READ_WRITE_TOKEN,
       addRandomSuffix: false,
