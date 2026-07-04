@@ -40,12 +40,30 @@ const clientUpdateSchema = z.object({
   tone: z.string().min(1),
 });
 
+const resumeScreeningSchema = z.object({
+  candidateName: z.string().min(1),
+  email: z.string().min(1).nullable().optional(),
+  phone: z.string().nullable().optional(),
+  skills: z.array(z.string()),
+  yearsExperience: z.number().min(0).nullable().optional(),
+  summary: z.string().min(1),
+  matchScore: z.number().min(0).max(100),
+  recommendation: z.enum(["shortlist", "reject", "maybe"]),
+});
+
+const offerLetterSchema = z.object({
+  subject: z.string().min(1),
+  letterBody: z.string().min(1),
+});
+
 const genericSchema = z.record(z.string(), z.unknown());
 
 function schemaFor(agentKey: string): z.ZodTypeAny {
   const key = agentKey.toLowerCase();
   if (key.includes("lead") && (key.includes("qualif") || key.includes("score"))) return leadQualificationSchema;
   if (key.includes("ticket") || key.includes("triage") || key.includes("support") || key.includes("classif")) return ticketTriageSchema;
+  if ((key.includes("resume") || key.includes("candidate")) && (key.includes("screen") || key.includes("pars"))) return resumeScreeningSchema;
+  if (key.includes("offer") && key.includes("letter")) return offerLetterSchema;
   if (key.includes("report") || key.includes("summary") || key.includes("business")) return businessReportSchema;
   if (key.includes("order") || key.includes("risk")) return orderRiskSchema;
   if (key.includes("client") || key.includes("update") || key.includes("agency")) return clientUpdateSchema;

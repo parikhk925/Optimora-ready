@@ -44,7 +44,7 @@ type WorkflowSeed = {
   roiEstimate: string;
   status: DeployStatus;
   setupStatus: DeployStatus;
-  steps: Array<{ step: number; label: string; agentKey: string; humanCheckpoint: boolean }>;
+  steps: Array<{ step: number; label: string; agentKey: string; humanCheckpoint: boolean; stepType?: string; config?: Record<string, unknown> }>;
 };
 
 const INTEGRATIONS: IntegrationSeed[] = [
@@ -206,6 +206,8 @@ function makeWorkflowSeeds(): WorkflowSeed[] {
             label: step.label,
             agentKey: agentKey(step.agent),
             humanCheckpoint: step.humanCheckpoint || risky,
+            stepType: step.stepType,
+            config: step.config,
           }))
         : genericSteps(workflowName, pack.agents, risky);
 
@@ -481,6 +483,12 @@ async function seedWorkflows(workflowSeeds: WorkflowSeed[]) {
           label: step.label,
           agentKey: step.agentKey,
           humanCheckpoint: step.humanCheckpoint,
+          // Explicit execution config (integration steps, calendar/email actions,
+          // ai_agent steps) is threaded through so the deployed workflow runs
+          // live steps instead of no-op placeholders. Falls back to schema
+          // defaults ("action" / {}) for legacy catalog steps.
+          ...(step.stepType ? { stepType: step.stepType } : {}),
+          ...(step.config ? { config: step.config as object } : {}),
         },
       });
     }

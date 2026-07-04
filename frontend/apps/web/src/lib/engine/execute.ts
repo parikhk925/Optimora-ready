@@ -238,6 +238,8 @@ async function executeSingleStep(deps: ExecuteStepDeps): Promise<StepExecutionOu
       const resolvedPayload: Record<string, unknown> = { ...payload };
       if (payload.fromLatestAiOutput) resolvedPayload.aiOutput = context.latestAiOutput;
       if (payload.bodyFromContextPath) resolvedPayload.body = resolvePath(context, String(payload.bodyFromContextPath));
+      if (payload.subjectFromContextPath) resolvedPayload.subject = resolvePath(context, String(payload.subjectFromContextPath));
+      if (payload.toFromContextPath) resolvedPayload.to = resolvePath(context, String(payload.toFromContextPath));
 
       const connection = await tx.workspaceIntegration.findFirst({
         where: { orgId: ctx.orgId, definition: { key: integrationKey } },

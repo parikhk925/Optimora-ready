@@ -87,7 +87,7 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     icon: "Users",
     color: "violet",
     headline: "Hire faster with an AI recruitment team",
-    description: "Screen resumes, rank candidates, follow up, and schedule interviews — all automated. LinkedIn is manual approval only; no scraping.",
+    description: "Candidates apply or HR uploads resumes; the AI team parses and scores them, books interviews on Google Calendar, and drafts and emails offer letters — with recruiter approval at every risky step.",
     forWho: "HR teams, recruiters, staffing agencies, companies hiring regularly",
     workflows: [
       "Job Description Creation", "Application Collection", "Resume Parsing",
@@ -104,7 +104,7 @@ export const INDUSTRY_PACKS: IndustryPack[] = [
     dashboardHref: "/dashboard/industry/hr",
     roiEstimate: "Cut time-to-shortlist by 70%. Save ₹1.5–3L/month in recruiter hours.",
     sampleOutput: "AI HR team screened 184 resumes, shortlisted 22 candidates, scheduled 14 interviews, and sent 41 status updates this week.",
-    integrations: ["ATS (generic CSV upload)", "Google Calendar", "Email", "LinkedIn (official integration required — no scraping)"],
+    integrations: ["Resume upload (PDF/DOCX/TXT)", "Google Calendar", "Email or Gmail"],
     businessOutcome: "Fill roles faster. Reduce recruiter burnout. Standardise candidate experience.",
   },
   {
@@ -645,6 +645,15 @@ export interface WorkflowStep {
   label: string;
   agent: string;
   humanCheckpoint: boolean;
+  /**
+   * Execution engine step type. When omitted the seed/deploy layer defaults it
+   * (approval when humanCheckpoint, otherwise ai_agent). Set explicitly on
+   * workflows that call real integrations so the deployed step runs live
+   * instead of as a no-op — e.g. the HR flow's google-calendar/email steps.
+   */
+  stepType?: "trigger" | "ai_agent" | "action" | "integration_action" | "approval" | "condition" | "delay" | "log_output" | "webhook_response";
+  /** Execution-time config threaded onto the deployed step (integrationKey, action, payload, agentKey overrides). */
+  config?: Record<string, unknown>;
 }
 
 export interface WorkflowTemplate {
@@ -688,18 +697,44 @@ export const WORKFLOW_TEMPLATES: WorkflowTemplate[] = [
     name: "Resume Screening Workflow",
     icon: "FileSearch",
     color: "violet",
-    trigger: "New applications received via email or ATS upload",
-    businessUseCase: "Screen and rank candidates automatically so recruiters only review top matches.",
-    requiredIntegrations: ["Email or ATS CSV upload", "Google Sheets"],
+    trigger: "Candidate applies or HR uploads a resume (upload-only — no scraping)",
+    businessUseCase: "Screen and rank uploaded resumes, book interviews on real Google Calendar, then generate and email an offer — all with human approval checkpoints.",
+    requiredIntegrations: ["Resume upload", "Google Calendar", "Email or Gmail"],
     steps: [
-      { step: 1, label: "Application collector gathers CVs from inbox", agent: "Document Collection Agent", humanCheckpoint: false },
-      { step: 2, label: "Resume Parser Agent extracts structured data", agent: "Resume Parser Agent", humanCheckpoint: false },
-      { step: 3, label: "Candidate Screening Agent scores against JD", agent: "Resume Parser Agent", humanCheckpoint: false },
-      { step: 4, label: "Shortlist Approval — recruiter reviews ranked list", agent: "Resume Parser Agent", humanCheckpoint: true },
-      { step: 5, label: "Scheduling Agent sends interview invites to shortlisted", agent: "Scheduling Agent", humanCheckpoint: false },
-      { step: 6, label: "Report Agent generates hiring funnel report", agent: "Report Agent", humanCheckpoint: false },
+      { step: 1, label: "Resume received via upload (HR or applicant)", agent: "Resume Intake Agent", humanCheckpoint: false, stepType: "trigger" },
+      { step: 2, label: "Resume Screener Agent parses and scores the resume against the JD", agent: "resume-screener", humanCheckpoint: false, stepType: "ai_agent" },
+      { step: 3, label: "Shortlist Approval — recruiter reviews the ranked candidate", agent: "resume-screener", humanCheckpoint: true, stepType: "approval" },
+      {
+        step: 4,
+        label: "Schedule interview on Google Calendar",
+        agent: "Interview Scheduler Agent",
+        humanCheckpoint: false,
+        stepType: "integration_action",
+        config: {
+          integrationKey: "google-calendar",
+          action: "create_event",
+          payload: {
+            summary: "Interview — shortlisted candidate",
+            description: "Interview scheduled automatically by Optimora after shortlist approval.",
+          },
+        },
+      },
+      { step: 5, label: "HR Confirmation — proceed to offer after the interview", agent: "Hiring Manager", humanCheckpoint: true, stepType: "approval" },
+      { step: 6, label: "Offer Letter Writer Agent drafts the offer letter", agent: "offer-letter-writer", humanCheckpoint: false, stepType: "ai_agent" },
+      {
+        step: 7,
+        label: "Send the offer letter by email",
+        agent: "Offer Delivery Agent",
+        humanCheckpoint: false,
+        stepType: "integration_action",
+        config: {
+          integrationKey: "email",
+          action: "send_email",
+          payload: { fromLatestAiOutput: true, subjectFromContextPath: "latestAiOutput.subject", bodyFromContextPath: "latestAiOutput.letterBody" },
+        },
+      },
     ],
-    sampleOutput: "184 CVs parsed, 22 candidates shortlisted, 14 interviews scheduled. Recruiter saved 11 hours.",
+    sampleOutput: "Resumes parsed and scored, shortlisted candidates booked on Google Calendar, and offer letters generated and emailed — with recruiter approval at each risky step.",
     roiEstimate: "Cut time-to-shortlist from 3 days to 3 hours. Process 10x more applications per recruiter.",
     status: "demo",
     industry: "HR / Recruitment",
