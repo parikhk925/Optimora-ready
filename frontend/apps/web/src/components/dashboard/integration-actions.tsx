@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
-const CONNECTABLE = new Set(["webhook", "google-sheets", "email", "crm"]);
+const CONNECTABLE = new Set(["webhook", "google-sheets", "email", "crm", "gmail", "google-calendar"]);
 
 export function IntegrationActions({ integrationKey, status }: { integrationKey: string; status: string }) {
   const router = useRouter();
@@ -36,7 +36,7 @@ export function IntegrationActions({ integrationKey, status }: { integrationKey:
   }
 
   const connected = status === "connected";
-  const usesRealOauth = integrationKey === "gmail";
+  const usesRealOauth = integrationKey === "gmail" || integrationKey === "google-calendar";
 
   return (
     <div className="flex flex-col gap-1">
