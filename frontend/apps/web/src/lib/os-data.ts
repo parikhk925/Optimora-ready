@@ -1143,7 +1143,7 @@ export const INDUSTRY_DASHBOARDS: IndustryDashboard[] = [
 export function statusLabel(s: DeployStatus): string {
   return {
     ready: "Ready",
-    demo: "Demo Mode",
+    demo: "Sample Preview",
     requires_integration: "Requires Integration",
     custom_setup: "Custom Setup",
   }[s];

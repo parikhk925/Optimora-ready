@@ -74,7 +74,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
       {/* Demo banner */}
       <DemoBanner
         variant="demo"
-        message={`"${wf.name}" is running in Demo Mode. All steps execute on sample data. Connect required integrations to run on live data.`}
+        message={`"${wf.name}" is running in Sample Preview. All steps execute on sample data. Connect required integrations to run on live data.`}
       />
 
       {/* Hero */}
@@ -240,10 +240,10 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
         <div className="flex items-center gap-2 mb-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <h2 className="text-sm font-bold text-blue-900">Sample output</h2>
-          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Demo Data</span>
+          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Sample Data</span>
         </div>
         <p className="text-sm text-blue-800 italic">&ldquo;{wf.sampleOutput}&rdquo;</p>
-        <p className="mt-2 text-xs text-blue-600">This output is generated from demo data. Connect integrations to produce real outputs.</p>
+        <p className="mt-2 text-xs text-blue-600">This output is generated from sample data. Connect integrations to produce real outputs.</p>
       </div>
 
       {/* Deployment CTA */}
@@ -256,7 +256,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
         </div>
         <p className="text-xs text-gray-500 mb-4">
           {wf.status === "demo"
-            ? "This workflow is ready to deploy in Demo Mode. It will run on sample data with no external integrations needed."
+            ? "This workflow is ready to deploy now. It runs on sample data until you connect the integrations it needs."
             : wf.status === "requires_integration"
               ? "This workflow requires connecting at least one external integration before it can run on live data."
               : "This workflow requires custom setup. Contact us to configure it for your environment."}
@@ -268,7 +268,7 @@ export default async function WorkflowDetailPage({ params }: { params: Promise<{
             className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
           >
             <Zap className="h-4 w-4" />
-            Deploy in Demo Mode
+            Deploy Workflow
           </Link>
           <Link
             href="/dashboard/integrations"

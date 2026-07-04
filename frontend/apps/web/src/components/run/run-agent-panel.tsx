@@ -87,7 +87,7 @@ function ResultView({ result, onReset }: { result: RunResult; onReset: () => voi
     <div className="space-y-4">
       {result.dev && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
-          Demo mode — deterministic echo output. No live backend or paid AI calls.
+          Preview mode — deterministic sample output. No live backend or paid AI calls.
         </div>
       )}
 

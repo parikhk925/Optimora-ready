@@ -39,7 +39,7 @@ export default async function WorkflowsPage() {
         </p>
       </div>
 
-      <DemoBanner message="All workflows below run in Demo Mode on sample data. Connect integrations to deploy on live data." />
+      <DemoBanner message="Workflows below run on sample data until you connect the integrations they need to go live." />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {WORKFLOW_TEMPLATES.map((wf) => {
