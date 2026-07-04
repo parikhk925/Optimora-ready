@@ -17,6 +17,7 @@ import { notFound } from "next/navigation";
 import { DemoBanner } from "@/components/ui/demo-banner";
 import { getTenantContext } from "@/lib/auth";
 import { deployPackAction } from "../../packs/actions";
+import { HrResumeUpload } from "@/components/dashboard/hr-resume-upload";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Target, Flame, CalendarCheck, CheckCircle2, RotateCcw,
@@ -131,6 +132,9 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
         ? `"${pack.name} Pack" is deployed for this workspace with ${deploymentState.deployedWorkflowCount} workflow records.`
         : `"${pack.name} Pack" is showing sample data for ${agencyName}. Connect integrations to see live results.`
       } />
+
+      {/* HR resume screening — real upload + AI screening (upload-only sourcing, no scraping) */}
+      {key === "hr" && <HrResumeUpload />}
 
       {/* Hero — gradient with pack identity */}
       <div className={cn("rounded-2xl bg-gradient-to-br p-6 text-white", pc.hero)}>
