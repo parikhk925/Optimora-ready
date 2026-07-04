@@ -20,7 +20,12 @@ import { isBlobConfigured, uploadResumeToBlob } from "@/lib/hr/blob-storage";
 
 export const runtime = "nodejs";
 
-const MAX_BYTES = 8 * 1024 * 1024; // 8 MB per resume
+// Vercel enforces a hard ~4.5MB request body limit on Node.js serverless
+// functions, regardless of any code-level limit — a larger request never
+// reaches this handler at all (rejected at the platform edge with an HTML
+// error page, not JSON). Stay safely under that ceiling, accounting for
+// multipart encoding overhead and the jobDescription field.
+const MAX_BYTES = 4 * 1024 * 1024; // 4 MB per resume
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
@@ -58,7 +63,7 @@ export async function POST(req: NextRequest) {
   for (const file of files) {
     const filename = file.name || "resume";
     if (file.size > MAX_BYTES) {
-      results.push({ filename, ok: false, error: "file exceeds 8 MB limit" });
+      results.push({ filename, ok: false, error: "file exceeds 4 MB limit" });
       continue;
     }
     const bytes = Buffer.from(await file.arrayBuffer());

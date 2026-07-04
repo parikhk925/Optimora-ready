@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { DemoBanner } from "@/components/ui/demo-banner";
+import { getTenantContext } from "@/lib/auth";
 
 const ICON_MAP: Record<string, React.ElementType> = {
   Home, ShoppingCart, Building2, Truck, Stethoscope, Layers,
@@ -41,6 +42,7 @@ const STATUS_CONFIG: Record<string, { icon: React.ElementType; label: string; cl
 export default async function ActivityPage() {
   const session = await requireSession();
   const activity = await listActivityLogs(getAutomationContextFromSession(session), 50);
+  const { agencyName } = getTenantContext();
   const total = activity.reduce((s, a) => s + a.count, 0);
   const completed = activity.filter((a) => a.status === "completed").length;
   const pending = activity.filter((a) => a.status === "pending_approval").length;
@@ -56,8 +58,8 @@ export default async function ActivityPage() {
       </div>
 
       <DemoBanner
-        businessName="Acme Operations Ltd"
-        message='Viewing demo activity for "Acme Operations Ltd". All entries are illustrative. Connect agents to see live activity logs.'
+        businessName={agencyName}
+        message={`Showing sample activity for "${agencyName}" until agents are connected to live systems.`}
       />
 
       {/* Summary bar */}
@@ -80,7 +82,7 @@ export default async function ActivityPage() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <Clock className="h-4 w-4 text-gray-400" />
           <h2 className="text-sm font-semibold text-gray-900">Recent activity</h2>
-          <span className="ml-auto text-xs text-gray-400">Backed by activity_logs with demo fallback</span>
+          <span className="ml-auto text-xs text-gray-400">Backed by activity_logs</span>
         </div>
 
         <div className="divide-y divide-gray-100">

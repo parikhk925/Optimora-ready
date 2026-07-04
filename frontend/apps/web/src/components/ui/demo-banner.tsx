@@ -9,7 +9,7 @@ interface DemoBannerProps {
 }
 
 export function DemoBanner({
-  businessName = "Acme Operations Ltd",
+  businessName = "your workspace",
   message,
   variant = "demo",
   className,
