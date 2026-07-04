@@ -76,7 +76,7 @@ const TOUR_SLIDES: TourSlide[] = [
       "Real-time agent activity across all workflows",
       "Pending approval notifications front and centre",
       "Industry-tagged for multi-client views",
-      "Connect live agents to replace demo data",
+      "Connect live agents to replace sample data",
     ],
     cta: { label: "View Activity Feed", href: "/dashboard/activity" },
   },

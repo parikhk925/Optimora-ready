@@ -271,7 +271,7 @@ function StepAgentTeam({ goalKey }: { goalKey: string }) {
         <div className="flex items-start gap-2">
           <FlaskConical className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800">
-            <span className="font-semibold">Demo Mode:</span> Agent team runs on demo data. Connect integrations to work on real data.
+            <span className="font-semibold">Sample Preview:</span> Agent team runs on sample data. Connect integrations to work on real data.
           </p>
         </div>
       </div>
@@ -410,7 +410,7 @@ function StepIntegrations({ goalKey }: { goalKey: string }) {
       <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
         <p className="text-xs text-blue-800">
           <span className="font-semibold">Before you go live:</span> Connect your integrations via the Integrations page.
-          In Demo Mode, agents use sample data and no external systems are touched.
+          In Sample Preview, agents use sample data and no external systems are touched.
         </p>
       </div>
     </div>
@@ -458,9 +458,9 @@ function StepDeploy({ industryKey, goalKey, onGoToDashboard }: { industryKey: st
         <div className="flex items-start gap-2">
           <FlaskConical className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-xs font-semibold text-amber-800 mb-1">Demo Mode — safe to explore</p>
+            <p className="text-xs font-semibold text-amber-800 mb-1">Sample Preview — safe to explore</p>
             <p className="text-xs text-amber-700">
-              Your first workflow will run on demo data. No emails are sent, no CRM is modified, and no external systems are touched until you explicitly connect them.
+              Your first workflow will run on sample data. No emails are sent, no CRM is modified, and no external systems are touched until you explicitly connect them.
             </p>
           </div>
         </div>
@@ -475,7 +475,7 @@ function StepDeploy({ industryKey, goalKey, onGoToDashboard }: { industryKey: st
         >
           <div>
             <p className="text-sm font-bold text-white">Deploy first workflow →</p>
-            <p className="text-xs text-indigo-200 mt-0.5">Start in Demo Mode — no integration needed</p>
+            <p className="text-xs text-indigo-200 mt-0.5">Start in Sample Preview — no integration needed</p>
           </div>
           <ArrowRight className="h-5 w-5 text-white" />
         </button>

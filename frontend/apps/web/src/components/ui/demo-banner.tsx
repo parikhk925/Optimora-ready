@@ -19,14 +19,14 @@ export function DemoBanner({
       wrapper: "border-amber-200 bg-amber-50",
       icon: "text-amber-600",
       text: "text-amber-800",
-      label: "Demo Mode",
+      label: "Sample Preview",
       Icon: FlaskConical,
     },
     info: {
       wrapper: "border-blue-200 bg-blue-50",
       icon: "text-blue-600",
       text: "text-blue-800",
-      label: "Preview Mode",
+      label: "Preview",
       Icon: Info,
     },
     warning: {
@@ -54,7 +54,7 @@ export function DemoBanner({
         <p className={cn("text-xs", v.text)}>
           <span className="font-semibold">{v.label}:</span>{" "}
           {message ??
-            `You are viewing a demo workspace for "${businessName}". All data is illustrative. Connect live integrations to see real results.`}
+            `"${businessName}" hasn't run any real workflows yet — showing sample output. Deploy a pack or connect integrations to see live results.`}
         </p>
       </div>
       <div className="flex-shrink-0 flex items-center gap-1.5">
@@ -80,7 +80,7 @@ export function IntegrationBadge({ label, status }: { label: string; status: "re
     requires_integration: { className: "bg-blue-50 text-blue-700 border-blue-200", label: "Requires Integration" },
     custom_setup: { className: "bg-purple-50 text-purple-700 border-purple-200", label: "Custom Setup Required" },
     available: { className: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Available" },
-    demo: { className: "bg-amber-50 text-amber-700 border-amber-200", label: "Demo Mode" },
+    demo: { className: "bg-amber-50 text-amber-700 border-amber-200", label: "Sample" },
   };
   const c = configs[status];
   return (

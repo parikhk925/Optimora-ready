@@ -1,5 +1,6 @@
 import { getRoiSummary } from "@/lib/automation-data";
 import { getAutomationContextFromSession, requireSession } from "@/lib/session";
+import { getTenantContext } from "@/lib/auth";
 import {
   Clock, Zap, Banknote, RotateCcw, CheckCircle2,
   TrendingUp, CalendarCheck, CreditCard, BarChart2, FileText,
@@ -25,6 +26,7 @@ const COLOR_MAP: Record<string, { bg: string; icon: string; ring: string }> = {
 export default async function ROIPage() {
   const session = await requireSession();
   const roi = await getRoiSummary(getAutomationContextFromSession(session));
+  const { agencyName } = getTenantContext();
   const totalRuns = roi.breakdown.reduce((s, r) => s + r.runs, 0);
   const totalHours = roi.breakdown.reduce((s, r) => s + r.hoursAvoided, 0);
 
@@ -34,13 +36,13 @@ export default async function ROIPage() {
         <p className="text-xs font-semibold uppercase tracking-widest text-indigo-600 mb-1">ROI Dashboard</p>
         <h1 className="text-2xl font-bold text-gray-900">The business case for AI agents</h1>
         <p className="mt-1 text-sm text-gray-500">
-          Estimated impact for Acme Operations Ltd based on demo activity and industry benchmarks.
+          Estimated impact for {agencyName} based on workflow activity and industry benchmarks.
         </p>
       </div>
 
       <DemoBanner
-        businessName="Acme Operations Ltd"
-        message='ROI figures below are estimates for demo workspace "Acme Operations Ltd" based on industry benchmarks. Real figures appear once agents are connected to live systems.'
+        businessName={agencyName}
+        message={`ROI figures below are sample estimates for "${agencyName}" based on industry benchmarks. Real figures appear once agents are connected to live systems.`}
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">

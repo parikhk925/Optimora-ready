@@ -54,7 +54,7 @@ const STATUS_COLORS: Record<string, string> = {
   requires_integration: "bg-blue-100 text-blue-700",
 };
 const STATUS_LABELS: Record<string, string> = {
-  demo: "Demo Mode",
+  demo: "Sample Preview",
   custom_setup: "Custom Setup Required",
   ready: "Ready",
   requires_integration: "Requires Integration",
@@ -99,7 +99,7 @@ export default function AgencyOSPage() {
 
       {/* Demo notice */}
       <DemoBanner
-        message="Agency Mode features are shown in Demo Mode. Contact us to enable live white-label mode, client portals, and billing under your agency name."
+        message="Agency Mode features are shown in Sample Preview. Contact us to enable live white-label mode, client portals, and billing under your agency name."
       />
 
       {/* Hero positioning */}
@@ -179,10 +179,10 @@ export default function AgencyOSPage() {
         <div className="space-y-3">
           {[
             { step: 1, title: "Pick the right pack for your client", desc: "Choose from 13 industry packs — Sales, HR, Finance, Operations, Support, Real Estate, and more.", tag: "Ready" },
-            { step: 2, title: "White-label the platform", desc: "Set your agency name, logo, and color scheme. Clients see your brand — not Optimora.", tag: "Demo Mode" },
-            { step: 3, title: "Set up an isolated client workspace", desc: "Each client gets their own agents, workflows, and data — fully separated from other clients.", tag: "Demo Mode" },
+            { step: 2, title: "White-label the platform", desc: "Set your agency name, logo, and color scheme. Clients see your brand — not Optimora.", tag: "Sample Preview" },
+            { step: 3, title: "Set up an isolated client workspace", desc: "Each client gets their own agents, workflows, and data — fully separated from other clients.", tag: "Sample Preview" },
             { step: 4, title: "Connect client's integrations", desc: "Wire up the client's CRM, email, or calendar. All integration requirements are shown upfront.", tag: "Requires Integration" },
-            { step: 5, title: "Deploy and deliver ROI reports", desc: "Agents run, results accumulate. Auto-generate branded monthly ROI reports to justify your retainer.", tag: "Demo Mode" },
+            { step: 5, title: "Deploy and deliver ROI reports", desc: "Agents run, results accumulate. Auto-generate branded monthly ROI reports to justify your retainer.", tag: "Sample Preview" },
             { step: 6, title: "Scale — add more clients, more packs", desc: "Track your recurring revenue with the revenue calculator. Scale to 50+ clients without adding headcount.", tag: "Ready" },
           ].map((s) => {
             const tagColor = s.tag === "Ready" ? "bg-emerald-100 text-emerald-700"
@@ -247,7 +247,7 @@ export default function AgencyOSPage() {
         <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <FileText className="h-4 w-4 text-indigo-600" />
           <h2 className="text-sm font-semibold text-gray-900">Sample client ROI report</h2>
-          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Demo Data</span>
+          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Sample Data</span>
         </div>
 
         <div className="px-5 py-4 border-b border-gray-100 bg-gray-50">

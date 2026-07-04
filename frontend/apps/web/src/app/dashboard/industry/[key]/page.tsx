@@ -15,6 +15,7 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { notFound } from "next/navigation";
 import { DemoBanner } from "@/components/ui/demo-banner";
+import { getTenantContext } from "@/lib/auth";
 import { deployPackAction } from "../../packs/actions";
 
 const ICON_MAP: Record<string, React.ElementType> = {
@@ -102,6 +103,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
   ]);
 
   if (!dash || !pack) notFound();
+  const { agencyName } = getTenantContext();
 
   const PackIcon = PACK_ICON_MAP[pack.icon] ?? Building2;
   const pc = PACK_COLOR_MAP[pack.color] ?? PACK_COLOR_MAP.indigo;
@@ -127,7 +129,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
       {/* Demo banner */}
       <DemoBanner message={deploymentState.deployed
         ? `"${pack.name} Pack" is deployed for this workspace with ${deploymentState.deployedWorkflowCount} workflow records.`
-        : `"${pack.name} Pack" is running in Demo Mode for Acme Operations Ltd. All metrics are illustrative. Connect integrations to see live data.`
+        : `"${pack.name} Pack" is showing sample data for ${agencyName}. Connect integrations to see live results.`
       } />
 
       {/* Hero — gradient with pack identity */}
@@ -321,7 +323,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
           })}
         </div>
         <p className="mt-3 text-[11px] text-gray-400">
-          No external data is sent without your explicit setup and confirmation. Demo Mode uses sample data only.
+          No external data is sent without your explicit setup and confirmation.
         </p>
       </div>
 
@@ -346,7 +348,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
       <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h2 className="text-sm font-bold text-gray-900">Sample activity feed</h2>
-          <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Demo Data</span>
+          <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Sample Data</span>
         </div>
         <div className="divide-y divide-gray-100">
           {DEMO_ACTIVITY.map((item, i) => (
@@ -380,7 +382,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
         <div className="flex items-center gap-2 mb-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <h2 className="text-sm font-bold text-blue-900">Sample weekly output</h2>
-          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Demo Data</span>
+          <span className="ml-auto rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold">Sample Data</span>
         </div>
         <p className="text-sm text-blue-800 italic">&ldquo;{pack.sampleOutput}&rdquo;</p>
       </div>
@@ -390,7 +392,7 @@ export default async function IndustryDashboardPage({ params }: { params: Promis
         <p className="text-xs font-semibold uppercase tracking-widest opacity-60 mb-2">Ready to deploy?</p>
         <h2 className="text-lg font-bold mb-1">Deploy the {pack.name} Pack</h2>
         <p className="text-sm opacity-70 mb-5">
-          Start in Demo Mode — no integrations required. Your agents run on sample data until you&apos;re ready to go live.
+          Start in Sample Preview — no integrations required. Your agents run on sample data until you&apos;re ready to go live.
         </p>
         <div className="flex flex-wrap gap-3">
           <form action={deployPackAction}>

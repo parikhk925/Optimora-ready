@@ -6,9 +6,10 @@ import {
   LayoutDashboard, Bot, ListTodo, Play, Brain,
   Wrench, Plug, ShieldCheck, BarChart3, ScrollText,
   Globe, Settings, Building2, Zap, Package, GitBranch,
-  Activity, TrendingUp, Users,
+  Activity, TrendingUp, Users, X,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useShell } from "@/components/dashboard/dashboard-shell";
 
 interface NavItem {
   label: string;
@@ -46,22 +47,28 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Settings", href: "/dashboard/settings", icon: Settings, section: "Account" },
 ];
 
-export function Sidebar() {
+function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   let lastSection = "";
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-gray-200 bg-white">
-      {/* Logo */}
-      <div className="flex h-16 items-center gap-2 border-b border-gray-100 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white text-sm font-bold">O</div>
+    <>
+      <div className="flex h-16 items-center gap-2 border-b border-white/60 px-5">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg text-white text-sm font-bold" style={{ background: "linear-gradient(135deg, #7C3AED 0%, #8B5CF6 100%)" }}>O</div>
         <div>
-          <span className="text-sm font-bold text-gray-900">Optimora</span>
+          <span className="text-sm font-bold text-[#0F1020]">Optimora</span>
           <p className="text-[10px] text-gray-400 leading-none">AI Automation OS</p>
         </div>
+        <button
+          type="button"
+          onClick={onNavigate}
+          className="ml-auto rounded-lg p-1.5 text-gray-400 hover:bg-white/70 lg:hidden"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
         {NAV_ITEMS.map((item) => {
           const showSection = item.section && item.section !== lastSection;
@@ -78,12 +85,8 @@ export function Sidebar() {
               )}
               <Link
                 href={item.href}
-                className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-                )}
+                onClick={onNavigate}
+                className={cn(active ? "glass-nav-item-active" : "glass-nav-item")}
               >
                 <Icon className="h-4 w-4 flex-shrink-0" />
                 {item.label}
@@ -92,6 +95,34 @@ export function Sidebar() {
           );
         })}
       </nav>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar() {
+  const { mobileNavOpen, setMobileNavOpen } = useShell();
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside className="glass-panel hidden h-full w-64 flex-col border-r lg:flex">
+        <SidebarContent />
+      </aside>
+
+      {/* Mobile drawer */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close menu overlay"
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+            onClick={() => setMobileNavOpen(false)}
+          />
+          <aside className="glass-panel relative flex h-full w-72 max-w-[85vw] flex-col border-r shadow-2xl">
+            <SidebarContent onNavigate={() => setMobileNavOpen(false)} />
+          </aside>
+        </div>
+      )}
+    </>
   );
 }
