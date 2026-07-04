@@ -4,6 +4,7 @@ import { googleSheetsIntegration } from "./googleSheets";
 import { emailIntegration } from "./email";
 import { mockCrmIntegration } from "./mockCrm";
 import { gmailIntegration } from "./gmail";
+import { googleCalendarIntegration } from "./google-calendar";
 
 const REGISTRY: Record<string, IntegrationProvider> = {
   webhook: webhookIntegration,
@@ -11,6 +12,7 @@ const REGISTRY: Record<string, IntegrationProvider> = {
   email: emailIntegration,
   crm: mockCrmIntegration,
   gmail: gmailIntegration,
+  "google-calendar": googleCalendarIntegration,
 };
 
 export function getIntegrationProvider(key: string): IntegrationProvider | undefined {

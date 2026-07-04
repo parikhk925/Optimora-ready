@@ -1780,6 +1780,38 @@ export async function connectGmailIntegration(
   return { ok: true, status: result };
 }
 
+export async function connectGoogleCalendarIntegration(
+  ctx: OrgContext,
+  tokens: { accessToken: string; refreshToken?: string; expiresAt: string },
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const result = await withAutomationDb(ctx, async (tx) => {
+    const workspaceId = await ensureWorkspace(tx, ctx);
+    const definition = await tx.integrationDefinition.upsert({
+      where: { key: "google-calendar" },
+      update: {},
+      create: { key: "google-calendar", name: "Google Calendar", category: "scheduling", description: "Google Calendar integration", status: "beta" },
+    });
+    const connection = await tx.workspaceIntegration.upsert({
+      where: { orgId_definitionId: { orgId: ctx.orgId, definitionId: definition.id } },
+      update: {
+        status: "connected", authType: "oauth", workspaceId,
+        configSnapshot: toPrismaJson(tokens), connectedAt: new Date(), connectedBy: toUuidOrNull(ctx.actorId),
+      },
+      create: {
+        tenantId: ctx.tenantId, orgId: ctx.orgId, workspaceId, definitionId: definition.id,
+        status: "connected", authType: "oauth", configSnapshot: toPrismaJson(tokens),
+        connectedAt: new Date(), connectedBy: toUuidOrNull(ctx.actorId),
+      },
+    });
+    await tx.auditLog.create({
+      data: { tenantId: ctx.tenantId, orgId: ctx.orgId, service: "automation-os", eventType: "integration.connected", sourceRef: connection.id, occurredAt: new Date(), payload: { provider: "google-calendar", actorId: ctx.actorId ?? null } },
+    }).catch(() => undefined);
+    return connection.status;
+  });
+  if (!result) return { ok: false, error: "Database not configured" };
+  return { ok: true, status: result };
+}
+
 /** POST /api/automation/integrations/:provider/connect — always mock/architectural in this pass (no real OAuth wired). */
 export async function connectIntegration(ctx: OrgContext, provider: string, config: Record<string, unknown> = {}): Promise<{ ok: boolean; status?: string; error?: string }> {
   if (!CONNECTABLE_PROVIDERS.includes(provider as (typeof CONNECTABLE_PROVIDERS)[number])) {

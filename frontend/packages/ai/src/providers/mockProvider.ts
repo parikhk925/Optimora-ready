@@ -73,6 +73,27 @@ function buildOutput(agentKey: string, instruction: string, context: Record<stri
     };
   }
 
+  if ((key.includes("resume") || key.includes("candidate")) && (key.includes("screen") || key.includes("pars"))) {
+    const score = hashScore(seed, 20, 95);
+    return {
+      candidateName: "Sample Candidate",
+      email: null,
+      phone: null,
+      skills: ["JavaScript", "TypeScript", "Node.js"],
+      yearsExperience: hashScore(seed, 1, 10),
+      summary: "Mock-parsed resume — no external AI call was made.",
+      matchScore: score,
+      recommendation: score >= 70 ? "shortlist" : score >= 40 ? "maybe" : "reject",
+    };
+  }
+
+  if (key.includes("offer") && key.includes("letter")) {
+    return {
+      subject: "Your offer from the team",
+      letterBody: "This is a mock-generated offer letter body — no external AI call was made. Configure AGENT_PROVIDER=openrouter (or openai/anthropic) with an API key to generate real letters.",
+    };
+  }
+
   // Generic fallback for any other agent key in the 130+ workflow catalog.
   return {
     result: `Processed "${instruction}" using mock provider (deterministic, no external AI call).`,
