@@ -15,10 +15,6 @@ export async function POST(req: NextRequest) {
   }
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  if (session.demo) {
-    const body = (await req.json()) as Record<string, unknown>;
-    return NextResponse.json({ profile: { ...body, id: "demo-profile" }, demo: true });
-  }
 
   try {
     const body = await req.json();

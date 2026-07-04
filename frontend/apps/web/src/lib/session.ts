@@ -10,19 +10,14 @@
 import { cookies } from "next/headers";
 import { getTenantContext } from "./auth";
 import {
-  DEMO_ACCESS_TOKEN,
   DEV_ACCESS_TOKEN,
-  canUseDemoAccessToken,
   canUseDevAccessToken,
   isLocalDevStubEnabled,
   isPlatformAuthConfigured,
-  isStagingDemoLoginEnabled,
 } from "./auth-mode";
 
 const ACCESS_COOKIE = "optimora_access";
 const ACCESS_TTL_SECONDS = 14 * 60; // slightly under backend 15-min TTL
-const DEMO_TENANT_ID = "00000000-0000-0000-0000-00000000d001";
-const DEMO_ORG_ID = "00000000-0000-0000-0000-00000000d002";
 
 export interface SessionUser {
   id: string;
@@ -35,7 +30,7 @@ export interface ServerSession {
   orgId: string;
   /** Opaque - never sent to the browser directly. Used server-side only. */
   accessToken: string;
-  demo?: boolean;
+  /** True only for the local-development stub session (never in production). */
   dev?: boolean;
 }
 
@@ -73,7 +68,6 @@ export async function getServerSession(): Promise<ServerSession | null> {
   const token = await getAccessToken();
   if (!token) return null;
 
-  if (canUseDemoAccessToken(token)) return getDemoSession();
   if (canUseDevAccessToken(token)) return getDevSession();
   if (!isPlatformAuthConfigured()) return null;
 
@@ -168,23 +162,6 @@ export function getDevSession(): ServerSession {
     accessToken: DEV_ACCESS_TOKEN,
     dev: true,
   };
-}
-
-export function getDemoSession(): ServerSession {
-  return {
-    user: { id: "demo-user", email: "demo@optimora.local" },
-    tenantId: DEMO_TENANT_ID,
-    orgId: DEMO_ORG_ID,
-    accessToken: DEMO_ACCESS_TOKEN,
-    demo: true,
-  };
-}
-
-export async function setDemoAccessCookie(): Promise<void> {
-  if (!isStagingDemoLoginEnabled()) {
-    throw new Error("staging_demo_login_disabled");
-  }
-  await setAccessCookie(DEMO_ACCESS_TOKEN);
 }
 
 export function isAuthConfigured(): boolean {

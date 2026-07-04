@@ -20,12 +20,6 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const session = await requireSession();
   if (!session) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  if (session.demo) {
-    return NextResponse.json({
-      task: { id, title: "Demo task", status: "in_review" },
-      demo: true,
-    });
-  }
 
   try {
     const res = await fetch(`${BASE}/v1/demo/tasks/${id}`, {

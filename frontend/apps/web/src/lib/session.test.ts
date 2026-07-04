@@ -51,18 +51,6 @@ describe("auth mode gates", () => {
     const { isLocalDevStubEnabled } = await import("./auth-mode.js");
     expect(isLocalDevStubEnabled()).toBe(false);
   });
-
-  it("enables staging demo login only from explicit demo flags", async () => {
-    vi.stubEnv("STAGING_DEMO_LOGIN", undefined);
-    vi.stubEnv("DEMO_MODE", undefined);
-    vi.stubEnv("NEXT_PUBLIC_DEMO_MODE", undefined);
-
-    const { isStagingDemoLoginEnabled } = await import("./auth-mode.js");
-    expect(isStagingDemoLoginEnabled()).toBe(false);
-
-    vi.stubEnv("STAGING_DEMO_LOGIN", "true");
-    expect(isStagingDemoLoginEnabled()).toBe(true);
-  });
 });
 
 describe("middleware logic no secrets in session lib", () => {
