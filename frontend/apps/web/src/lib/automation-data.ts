@@ -8,6 +8,7 @@
  */
 
 import type { PrismaClient, TxClient } from "@optimora/db";
+import { runAgent } from "@optimora/ai";
 import { executeStepsFrom, finalizeRun } from "./engine/execute";
 import { testIntegrationConnection as testIntegrationConnectionImpl } from "./integrations/registry";
 import {
@@ -1810,6 +1811,150 @@ export async function connectGoogleCalendarIntegration(
   });
   if (!result) return { ok: false, error: "Database not configured" };
   return { ok: true, status: result };
+}
+
+export interface ResumeScreenResult {
+  ok: boolean;
+  error?: string;
+  uploadedFileId?: string;
+  candidateId?: string;
+  screening?: Record<string, unknown>;
+  provider?: string;
+}
+
+/**
+ * Persists an uploaded resume + its AI screening result, tenant/org-scoped
+ * under RLS via withAutomationDb. Sourcing is upload-only (HR uploads, or a
+ * candidate applies by uploading) — there is no scraping anywhere.
+ *
+ * Storage layout:
+ *   - raw file bytes  → Vercel Blob (storageKey passed in by the route)
+ *   - UploadedFile    → row on a per-workspace "Candidate Resumes" DataSource
+ *   - parsed result   → BusinessObject (objectType "candidate"), the flexible
+ *                       industry-neutral store the schema already earmarks for
+ *                       "HR candidates ... as typed JSON" (no new table needed)
+ *
+ * The screening itself is a real runAgent("resume-screener") call over the
+ * extracted resume text plus the job description / evaluation criteria.
+ */
+export async function uploadAndScreenResume(
+  ctx: OrgContext,
+  input: {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    storageKey: string;
+    resumeText: string;
+    jobDescription?: string;
+  },
+): Promise<ResumeScreenResult> {
+  const jobDescription =
+    input.jobDescription?.trim() ||
+    "General role. Evaluate the candidate's overall fit, seniority, and relevant skills.";
+
+  // Run the screening agent outside the DB transaction (network call). Failures
+  // are captured, never faked — the caller sees a real error.
+  const agentResult = await runAgent({
+    agentKey: "resume-screener",
+    instruction:
+      `You are screening a resume against this job description and evaluation criteria:\n${jobDescription}\n` +
+      `Extract the candidate's details and score their fit 0-100 (matchScore). ` +
+      `Set recommendation to "shortlist", "maybe", or "reject".`,
+    context: { resumeText: input.resumeText, jobDescription },
+  });
+  if (agentResult.status === "failed") {
+    return { ok: false, error: `Resume screening agent failed: ${agentResult.error}` };
+  }
+  const screening = agentResult.output;
+
+  const result = await withAutomationDb(ctx, async (tx) => {
+    const workspaceId = await ensureWorkspace(tx, ctx);
+
+    // One shared "Candidate Resumes" data source per workspace.
+    let dataSource = await tx.dataSource.findFirst({
+      where: { tenantId: ctx.tenantId, orgId: ctx.orgId, workspaceId, type: "resume_upload" },
+      select: { id: true },
+    });
+    if (!dataSource) {
+      dataSource = await tx.dataSource.create({
+        data: {
+          tenantId: ctx.tenantId,
+          orgId: ctx.orgId,
+          workspaceId,
+          name: "Candidate Resumes",
+          type: "resume_upload",
+          status: "active",
+          config: { source: "hr_upload" },
+        },
+        select: { id: true },
+      });
+    }
+
+    const uploaded = await tx.uploadedFile.create({
+      data: {
+        tenantId: ctx.tenantId,
+        orgId: ctx.orgId,
+        workspaceId,
+        dataSourceId: dataSource.id,
+        filename: input.filename,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        storageKey: input.storageKey,
+        parsedCount: 1,
+        status: "parsed",
+      },
+      select: { id: true },
+    });
+
+    const candidate = await tx.businessObject.create({
+      data: {
+        tenantId: ctx.tenantId,
+        orgId: ctx.orgId,
+        workspaceId,
+        industryKey: "hr",
+        objectType: "candidate",
+        displayName: (screening.candidateName as string | undefined) || input.filename,
+        status: "screened",
+        data: toPrismaJson({
+          ...screening,
+          resumeFileId: uploaded.id,
+          storageKey: input.storageKey,
+          screenedBy: "resume-screener",
+          provider: agentResult.provider,
+          jobDescription,
+        }),
+      },
+      select: { id: true },
+    });
+
+    await tx.dataSource.update({
+      where: { id: dataSource.id },
+      data: { recordCount: { increment: 1 }, lastIngestedAt: new Date() },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        tenantId: ctx.tenantId,
+        orgId: ctx.orgId,
+        service: "automation-os",
+        eventType: "hr.resume.screened",
+        sourceRef: candidate.id,
+        occurredAt: new Date(),
+        payload: { uploadedFileId: uploaded.id, matchScore: screening.matchScore ?? null, actorId: ctx.actorId ?? null },
+      },
+    }).catch(() => undefined);
+
+    return { uploadedFileId: uploaded.id, candidateId: candidate.id };
+  });
+
+  if (!result) return { ok: false, error: "Database not configured" };
+  return {
+    ok: true,
+    uploadedFileId: result.uploadedFileId,
+    candidateId: result.candidateId,
+    screening,
+    provider: agentResult.provider,
+  };
 }
 
 /** POST /api/automation/integrations/:provider/connect — always mock/architectural in this pass (no real OAuth wired). */
