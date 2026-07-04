@@ -104,12 +104,28 @@ export async function verifyMagicLink(
     data: { consumedAt: new Date() },
   });
 
-  const email = record.identifier;
+  return authenticateEmail(tx, deps.secret, tenantId, record.identifier);
+}
+
+/**
+ * Find-or-create a user by verified email and issue a session. Shared by
+ * magic-link verification and OAuth (where the email is already proven by the
+ * upstream identity provider). The caller is responsible for verifying that
+ * the email is genuinely authenticated before calling this.
+ */
+export async function authenticateEmail(
+  tx: TxClient,
+  secret: string,
+  tenantId: string,
+  emailRaw: string,
+): Promise<IssuedTokens> {
+  const email = normalizeEmail(emailRaw);
+  if (!EMAIL_RE.test(email)) throw new AuthError("invalid_email");
   const user =
     (await tx.user.findUnique({ where: { email }, select: { id: true, email: true } })) ??
     (await tx.user.create({ data: { email }, select: { id: true, email: true } }));
 
-  return issueSession(tx, deps.secret, tenantId, user);
+  return issueSession(tx, secret, tenantId, user);
 }
 
 /** Rotate a refresh token: revoke the presented one, issue a fresh pair. */

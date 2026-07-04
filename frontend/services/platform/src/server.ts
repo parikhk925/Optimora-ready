@@ -29,6 +29,7 @@ import {
   refreshSession,
   requestMagicLink,
   verifyMagicLink,
+  authenticateEmail,
   type AuthDeps,
 } from "./auth/service.js";
 import { REFRESH_TTL_SECONDS } from "./auth/tokens.js";
@@ -261,6 +262,36 @@ export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
       return reply.send({ accessToken: issued.accessToken, user: issued.user });
     } catch (err) {
       if (err instanceof AuthError) return reply.code(401).send({ error: "invalid_token" });
+      throw err;
+    }
+  });
+
+  // OAuth exchange (T-2.2): the web app completes the provider (Google) OAuth
+  // dance, then hands us the verified email over a trusted server-to-server
+  // call authenticated by INTERNAL_AUTH_SECRET. We never see the provider
+  // token — only the proven email — and mint a normal session from it.
+  app.post("/v1/auth/oauth/exchange", async (req, reply) => {
+    const internalSecret = process.env.INTERNAL_AUTH_SECRET;
+    if (!internalSecret) {
+      return reply.code(503).send({ error: "oauth_exchange_not_configured" });
+    }
+    const presented = singleHeader(req.headers["x-internal-auth"]);
+    if (!presented || presented !== internalSecret) {
+      return reply.code(401).send({ error: "invalid_internal_auth" });
+    }
+    const body = req.body as { email?: unknown } | undefined;
+    if (typeof body?.email !== "string" || body.email.length === 0) {
+      return reply.code(400).send({ error: "email_required" });
+    }
+    const ctx = req.tenantContext!;
+    try {
+      const issued = await req.runScoped!((tx) =>
+        authenticateEmail(tx, authSecret, ctx.tenantId, body.email as string),
+      );
+      setRefreshCookie(reply, issued.refreshToken);
+      return reply.send({ accessToken: issued.accessToken, user: issued.user });
+    } catch (err) {
+      if (err instanceof AuthError) return reply.code(400).send({ error: "invalid_email" });
       throw err;
     }
   });

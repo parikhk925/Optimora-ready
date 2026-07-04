@@ -5,7 +5,7 @@
  * Local dev without PLATFORM_API_URL can use the stub session.
  */
 import { LoginForm } from "@/components/auth/login-form";
-import { isLocalDevStubEnabled, isStagingDemoLoginEnabled } from "@/lib/auth-mode";
+import { isLocalDevStubEnabled } from "@/lib/auth-mode";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/session";
 
@@ -35,7 +35,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <LoginForm
           initialToken={params.token}
           nextPath={params.next ?? "/dashboard"}
-          demoLoginEnabled={isStagingDemoLoginEnabled()}
+          googleOAuthEnabled={Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_OAUTH_REDIRECT_URI)}
         />
 
         {isLocalDevStubEnabled() && (
