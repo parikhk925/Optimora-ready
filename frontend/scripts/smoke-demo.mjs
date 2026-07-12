@@ -11,7 +11,10 @@
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:3001";
 const PLATFORM_URL = process.env.PLATFORM_URL ?? "http://localhost:3000";
-const TIMEOUT_MS = 8000;
+const configuredTimeoutMs = Number.parseInt(process.env.SMOKE_TIMEOUT_MS ?? "30000", 10);
+const TIMEOUT_MS = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+  ? configuredTimeoutMs
+  : 30000;
 
 const results = [];
 
