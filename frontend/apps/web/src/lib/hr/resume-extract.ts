@@ -19,19 +19,13 @@ import mammoth from "mammoth";
 function ensurePdfJsNodePolyfills(): void {
   const g = globalThis as unknown as Record<string, unknown>;
   if (typeof g.DOMMatrix === "undefined") {
-    g.DOMMatrix = class DOMMatrix {
-      constructor(_init?: unknown) {}
-    };
+    g.DOMMatrix = class DOMMatrix {};
   }
   if (typeof g.Path2D === "undefined") {
-    g.Path2D = class Path2D {
-      constructor(_path?: unknown) {}
-    };
+    g.Path2D = class Path2D {};
   }
   if (typeof g.ImageData === "undefined") {
-    g.ImageData = class ImageData {
-      constructor(_a?: unknown, _b?: unknown, _c?: unknown) {}
-    };
+    g.ImageData = class ImageData {};
   }
 }
 

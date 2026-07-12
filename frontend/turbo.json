@@ -13,6 +13,9 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "@optimora/db#typecheck": {
+      "dependsOn": ["@optimora/db#build"]
+    },
     "lint": {},
     "test": {
       "dependsOn": ["^build"]

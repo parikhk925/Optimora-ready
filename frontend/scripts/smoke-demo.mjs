@@ -47,7 +47,8 @@ async function httpCheck(name, url, opts = {}) {
   }
 }
 
-async function jsonCheck(name, url, validate) {
+async function jsonCheck(name, url, validate, opts = {}) {
+  const { expectStatus = 200 } = opts;
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
@@ -66,11 +67,14 @@ async function jsonCheck(name, url, validate) {
     }
 
     const shapeOk = validate(data);
+    const statusOk = res.status === expectStatus || (expectStatus === 200 && res.ok);
     return {
       name,
-      ok: res.ok && shapeOk,
+      ok: statusOk && shapeOk,
       url,
-      detail: `HTTP ${res.status}; ${shapeOk ? "valid JSON shape" : "unexpected JSON shape"}`,
+      detail: `HTTP ${res.status}; ${shapeOk ? "valid JSON shape" : "unexpected JSON shape"}${
+        statusOk ? "" : `; expected ${expectStatus}`
+      }`,
     };
   } catch (e) {
     return { name, ok: false, url, detail: e.cause?.code ?? e.message };
@@ -162,16 +166,20 @@ results.push(
 );
 
 results.push(
-  await jsonCheck("Automation activity API", `${WEB_URL}/api/automation/activity`, (data) =>
-    Array.isArray(data?.logs),
+  await jsonCheck(
+    "Automation activity API auth gate",
+    `${WEB_URL}/api/automation/activity`,
+    (data) => data?.error === "unauthenticated",
+    { expectStatus: 401 },
   ),
 );
 
 results.push(
   await jsonCheck(
-    "Automation ROI API",
+    "Automation ROI API auth gate",
     `${WEB_URL}/api/automation/roi`,
-    (data) => typeof data?.roi === "object" && data.roi !== null,
+    (data) => data?.error === "unauthenticated",
+    { expectStatus: 401 },
   ),
 );
 
