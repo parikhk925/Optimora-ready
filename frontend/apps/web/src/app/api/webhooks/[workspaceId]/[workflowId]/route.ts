@@ -1,31 +1,18 @@
 /**
- * Public inbound webhook trigger. No session required — this is the one
- * intentionally public endpoint in the automation API. Validates that the
- * workspace + deployed workflow exist and match, applies a basic per-workflow
- * rate limit, and starts a real workflow run with triggerType "webhook".
+ * Public inbound webhook trigger. No session required; this is the intentionally
+ * public endpoint in the automation API. It validates the workspace/workflow,
+ * applies a basic per-workflow rate limit, and starts a workflow run with
+ * triggerType "webhook".
  *
- * Optional signature verification: if the workflow's workspace has a webhook
- * secret configured (WEBHOOK_SIGNING_SECRET env var), requests must include a
- * matching `x-optimora-signature` header (HMAC-SHA256 of the raw body). This
- * is architecture-ready but only enforced when the env var is set, so demo
- * workspaces without a configured secret keep working out of the box.
+ * Production requests require WEBHOOK_SIGNING_SECRET unless unsigned webhooks
+ * are explicitly enabled for staging/demo. Requests must include a matching
+ * x-optimora-signature header: HMAC-SHA256 of the raw body as raw hex or
+ * sha256=<hex>.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { resolveWebhookContext, startWorkflowRun, checkUsageLimit } from "@/lib/automation-data";
 import { checkRateLimit } from "@/lib/rateLimit";
-
-function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
-  const secret = process.env.WEBHOOK_SIGNING_SECRET;
-  if (!secret) return true; // no secret configured — signature check not enforced in demo mode
-  if (!signatureHeader) return false;
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
-  try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
-  } catch {
-    return false;
-  }
-}
+import { verifyWebhookSignature } from "@/lib/webhook-signature";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ workspaceId: string; workflowId: string }> }) {
   const { workspaceId, workflowId } = await params;
@@ -36,8 +23,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ wor
   }
 
   const rawBody = await req.text();
-  if (!verifySignature(rawBody, req.headers.get("x-optimora-signature"))) {
-    return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
+  const signature = verifyWebhookSignature(rawBody, req.headers.get("x-optimora-signature"));
+  if (!signature.ok) {
+    const status = signature.reason === "missing_secret" ? 503 : 401;
+    return NextResponse.json({ error: signature.reason }, { status });
   }
 
   const ctx = await resolveWebhookContext(workspaceId, workflowId);

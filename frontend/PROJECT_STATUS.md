@@ -38,6 +38,7 @@ Prisma validation requires `DATABASE_URL` and `DIRECT_DATABASE_URL` in the proce
 - Turbo serializes `@optimora/db#typecheck` after `@optimora/db#build` to avoid concurrent Prisma client generation locks.
 - Smoke script now expects protected Activity and ROI APIs to return `401` with valid JSON when unauthenticated.
 - Root FastAPI scaffold imports without database env vars, exposes `/api/healthz` and `/api/readyz`, fails DB-backed routes closed with `503`, and avoids credentialed wildcard CORS.
+- Public inbound webhooks now fail closed in production unless `WEBHOOK_SIGNING_SECRET` is configured or unsigned webhook mode is explicitly enabled for staging/demo.
 
 ## What Is Demo/Sample Ready
 
@@ -54,6 +55,7 @@ Prisma validation requires `DATABASE_URL` and `DIRECT_DATABASE_URL` in the proce
 - Gmail and Google Calendar OAuth.
 - Supabase/Postgres migrations and seed data for DB-backed Automation OS.
 - Platform service runtime env vars.
+- `WEBHOOK_SIGNING_SECRET` for production inbound workflow webhooks.
 - Billing provider setup before real checkout/payment claims.
 - WhatsApp, LinkedIn, Shopify, CRM, ATS, SMS, accounting, ERP, and other external systems.
 - Temporal/Qdrant/ClickHouse-backed production behavior where those services are expected.
