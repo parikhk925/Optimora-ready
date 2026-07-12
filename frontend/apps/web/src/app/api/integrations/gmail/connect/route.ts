@@ -5,9 +5,11 @@
  */
 import { NextResponse } from "next/server";
 import { requireSession, getAutomationContextFromSession } from "@/lib/session";
+import { createIntegrationOAuthState, INTEGRATION_OAUTH_STATE_TTL_SECONDS } from "@/lib/integration-oauth-state";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
+const GMAIL_OAUTH_STATE_COOKIE = "optimora_gmail_oauth_state";
 
 export async function GET() {
   const session = await requireSession();
@@ -23,7 +25,13 @@ export async function GET() {
   }
 
   const ctx = getAutomationContextFromSession(session);
-  const state = Buffer.from(JSON.stringify({ tenantId: ctx.tenantId, orgId: ctx.orgId, actorId: ctx.actorId })).toString("base64url");
+  const oauthState = createIntegrationOAuthState({ tenantId: ctx.tenantId, orgId: ctx.orgId, actorId: ctx.actorId });
+  if (!oauthState) {
+    return NextResponse.json(
+      { error: "oauth_state_not_configured", message: "INTERNAL_AUTH_SECRET or AUTH_SECRET must be set." },
+      { status: 503 },
+    );
+  }
 
   const url = new URL(GOOGLE_AUTH_URL);
   url.searchParams.set("client_id", clientId);
@@ -32,7 +40,15 @@ export async function GET() {
   url.searchParams.set("scope", GMAIL_SEND_SCOPE);
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
-  url.searchParams.set("state", state);
+  url.searchParams.set("state", oauthState.state);
 
-  return NextResponse.redirect(url.toString());
+  const res = NextResponse.redirect(url.toString());
+  res.cookies.set(GMAIL_OAUTH_STATE_COOKIE, oauthState.cookieValue, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: INTEGRATION_OAUTH_STATE_TTL_SECONDS,
+  });
+  return res;
 }

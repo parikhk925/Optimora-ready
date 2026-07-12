@@ -5,15 +5,19 @@
  * dashboard integrations page with a success/error query param.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { connectGoogleCalendarIntegration, type OrgContext } from "@/lib/automation-data";
+import { connectGoogleCalendarIntegration } from "@/lib/automation-data";
+import { readIntegrationOAuthState } from "@/lib/integration-oauth-state";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const CALENDAR_OAUTH_STATE_COOKIE = "optimora_calendar_oauth_state";
 
 function redirectToIntegrations(req: NextRequest, status: "connected" | "error", message?: string) {
   const url = new URL("/dashboard/integrations", req.nextUrl.origin);
   url.searchParams.set("google-calendar", status);
   if (message) url.searchParams.set("message", message);
-  return NextResponse.redirect(url);
+  const res = NextResponse.redirect(url);
+  res.cookies.delete(CALENDAR_OAUTH_STATE_COOKIE);
+  return res;
 }
 
 export async function GET(req: NextRequest) {
@@ -23,14 +27,8 @@ export async function GET(req: NextRequest) {
   if (oauthError) return redirectToIntegrations(req, "error", oauthError);
   if (!code || !state) return redirectToIntegrations(req, "error", "missing_code_or_state");
 
-  let ctx: OrgContext;
-  try {
-    const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8")) as Partial<OrgContext>;
-    if (!decoded.tenantId || !decoded.orgId) throw new Error("invalid state payload");
-    ctx = { tenantId: decoded.tenantId, orgId: decoded.orgId, actorId: decoded.actorId };
-  } catch {
-    return redirectToIntegrations(req, "error", "invalid_state");
-  }
+  const ctx = readIntegrationOAuthState(req, CALENDAR_OAUTH_STATE_COOKIE, state);
+  if (!ctx) return redirectToIntegrations(req, "error", "invalid_state");
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
